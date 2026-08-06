@@ -1,0 +1,23 @@
+{
+  "name": "bot-elo",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Bot Discord : resume quotidien de la progression LP (League of Legends)",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "now": "node src/index.js --now",
+    "dry": "node src/index.js --dry-run",
+    "preview": "node scripts/preview.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.7",
+    "node-cron": "^3.0.3"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

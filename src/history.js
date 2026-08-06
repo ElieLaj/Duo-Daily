@@ -1,0 +1,330 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
+
+import { config } from './config.js';
+import { loadStore } from './store.js';
+import { formatDateFr } from './time.js';
+
+let database = null;
+let databasePath = null;
+
+function migrateSchema(db) {
+  db.exec(`
+    PRAGMA journal_mode = WAL;
+    PRAGMA synchronous = NORMAL;
+    PRAGMA busy_timeout = 5000;
+
+    CREATE TABLE IF NOT EXISTS metadata (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS matches (
+      player_key TEXT NOT NULL,
+      player_label TEXT NOT NULL,
+      puuid TEXT,
+      match_id TEXT NOT NULL,
+      queue_id INTEGER,
+      queue_type TEXT,
+      ended_at INTEGER,
+      observed_at INTEGER NOT NULL,
+      champion_name TEXT,
+      kills INTEGER,
+      deaths INTEGER,
+      assists INTEGER,
+      cs INTEGER,
+      duration_sec INTEGER,
+      win INTEGER,
+      remake INTEGER,
+      lp_delta INTEGER,
+      lp_delta_games INTEGER,
+      tier_after TEXT,
+      rank_after TEXT,
+      league_points_after INTEGER,
+      ladder_after INTEGER,
+      source TEXT NOT NULL DEFAULT 'live',
+      PRIMARY KEY (player_key, match_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS matches_player_ended_at
+      ON matches (player_key, ended_at DESC);
+    CREATE INDEX IF NOT EXISTS matches_ended_at
+      ON matches (ended_at DESC);
+  `);
+
+  // Migration additive pour une base creee avant le stockage explicite de la
+  // file. Les anciennes lignes viennent toutes de la file alors configuree.
+  const columns = new Set(db.prepare('PRAGMA table_info(matches)').all().map((column) => column.name));
+  if (!columns.has('queue_id')) db.exec('ALTER TABLE matches ADD COLUMN queue_id INTEGER');
+  if (!columns.has('queue_type')) db.exec('ALTER TABLE matches ADD COLUMN queue_type TEXT');
+  db.prepare('UPDATE matches SET queue_id = ?, queue_type = ? WHERE queue_id IS NULL').run(
+    config.queueId,
+    config.queue,
+  );
+}
+
+async function openDatabase() {
+  if (database && databasePath === config.historyPath) return database;
+  if (database) database.close();
+
+  await fs.mkdir(path.dirname(config.historyPath), { recursive: true });
+  database = new DatabaseSync(config.historyPath);
+  databasePath = config.historyPath;
+  migrateSchema(database);
+  return database;
+}
+
+function migrateRecentLp(db, store) {
+  const migrationKey = 'json_recent_lp_v1';
+  const insert = db.prepare(`
+    INSERT OR IGNORE INTO matches (
+      player_key, player_label, puuid, match_id, queue_id, queue_type, observed_at,
+      lp_delta, lp_delta_games, source
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 'json_migration')
+  `);
+
+  let imported = 0;
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    // Le controle est dans la transaction : deux processus demarrant ensemble
+    // (bot principal et --now) ne peuvent pas executer la migration deux fois.
+    if (db.prepare('SELECT 1 FROM metadata WHERE key = ?').get(migrationKey)) {
+      db.exec('COMMIT');
+      return 0;
+    }
+    for (const [playerKey, state] of Object.entries(store.live ?? {})) {
+      for (const sample of state.recentLp ?? []) {
+        if (!sample?.id || !Number.isFinite(sample.delta)) continue;
+        const result = insert.run(
+          playerKey,
+          playerKey.replace('#', ' #'),
+          state.puuid ?? store.players?.[playerKey]?.puuid ?? null,
+          sample.id,
+          config.queueId,
+          config.queue,
+          Date.now(),
+          sample.delta,
+        );
+        imported += Number(result.changes);
+      }
+    }
+    db.prepare('INSERT INTO metadata (key, value) VALUES (?, ?)').run(
+      migrationKey,
+      JSON.stringify({ completedAt: new Date().toISOString(), imported }),
+    );
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+  return imported;
+}
+
+/** Cree la base et importe une seule fois les variations encore presentes dans le JSON. */
+export async function initializeHistory(store = null) {
+  const db = await openDatabase();
+  const imported = migrateRecentLp(db, store ?? (await loadStore()));
+  return { path: config.historyPath, imported };
+}
+
+const UPSERT_MATCH = `
+  INSERT INTO matches (
+    player_key, player_label, puuid, match_id, queue_id, queue_type, ended_at, observed_at,
+    champion_name, kills, deaths, assists, cs, duration_sec, win, remake,
+    lp_delta, lp_delta_games, tier_after, rank_after, league_points_after,
+    ladder_after, source
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'live')
+  ON CONFLICT (player_key, match_id) DO UPDATE SET
+    player_label = excluded.player_label,
+    puuid = COALESCE(excluded.puuid, matches.puuid),
+    queue_id = excluded.queue_id,
+    queue_type = excluded.queue_type,
+    ended_at = COALESCE(excluded.ended_at, matches.ended_at),
+    champion_name = COALESCE(excluded.champion_name, matches.champion_name),
+    kills = COALESCE(excluded.kills, matches.kills),
+    deaths = COALESCE(excluded.deaths, matches.deaths),
+    assists = COALESCE(excluded.assists, matches.assists),
+    cs = COALESCE(excluded.cs, matches.cs),
+    duration_sec = COALESCE(excluded.duration_sec, matches.duration_sec),
+    win = COALESCE(excluded.win, matches.win),
+    remake = COALESCE(excluded.remake, matches.remake),
+    lp_delta = COALESCE(matches.lp_delta, excluded.lp_delta),
+    lp_delta_games = COALESCE(matches.lp_delta_games, excluded.lp_delta_games),
+    tier_after = COALESCE(matches.tier_after, excluded.tier_after),
+    rank_after = COALESCE(matches.rank_after, excluded.rank_after),
+    league_points_after = COALESCE(matches.league_points_after, excluded.league_points_after),
+    ladder_after = COALESCE(matches.ladder_after, excluded.ladder_after),
+    source = 'live'
+`;
+
+/**
+ * Archive un lot avant d'avancer le curseur JSON. La cle composite rend un
+ * second passage sans danger apres un redemarrage au milieu d'un cycle.
+ * @returns {Promise<Set<string>>} cles joueur/match absentes avant ce passage.
+ */
+export async function archiveFinishedGames(records) {
+  if (!records.length) return new Set();
+  const db = await openDatabase();
+  const exists = db.prepare('SELECT 1 FROM matches WHERE player_key = ? AND match_id = ?');
+  const upsert = db.prepare(UPSERT_MATCH);
+  const inserted = new Set();
+
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    for (const record of records) {
+      const { player, match, entry, delta, deltaGames } = record;
+      const key = `${player.key}\u0000${match.matchId}`;
+      if (!exists.get(player.key, match.matchId)) inserted.add(key);
+      const hasMeasuredDelta = deltaGames > 0 && Number.isFinite(delta);
+      const hasRankSnapshot = Boolean(record.rankSnapshot || hasMeasuredDelta);
+      upsert.run(
+        player.key,
+        player.label,
+        record.puuid ?? null,
+        match.matchId,
+        config.queueId,
+        config.queue,
+        Number.isFinite(match.endedAt) ? match.endedAt : null,
+        Date.now(),
+        match.championName ?? null,
+        match.kills ?? null,
+        match.deaths ?? null,
+        match.assists ?? null,
+        match.cs ?? null,
+        match.durationSec ?? null,
+        match.win == null ? null : Number(Boolean(match.win)),
+        match.remake == null ? null : Number(Boolean(match.remake)),
+        hasMeasuredDelta ? delta : null,
+        hasMeasuredDelta ? deltaGames : null,
+        hasRankSnapshot ? entry?.tier ?? null : null,
+        hasRankSnapshot ? entry?.rank ?? null : null,
+        hasRankSnapshot ? entry?.leaguePoints ?? null : null,
+        hasRankSnapshot && Number.isFinite(record.ladder) ? record.ladder : null,
+      );
+    }
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+  return inserted;
+}
+
+/** Variations connues, sans plafond de 30 parties. */
+export async function getLpDeltas(playerKey, matchIds) {
+  if (!matchIds.length) return new Map();
+  const db = await openDatabase();
+  const find = db.prepare(
+    'SELECT lp_delta, lp_delta_games FROM matches WHERE player_key = ? AND match_id = ? AND queue_id = ?',
+  );
+  const result = new Map();
+  for (const matchId of matchIds) {
+    const row = find.get(playerKey, matchId, config.queueId);
+    // Un delta mesure sur plusieurs parties est conserve pour les futurs
+    // agregats, mais ne doit pas etre presente comme celui d'une seule partie.
+    if (row?.lp_delta_games === 1 && Number.isFinite(row.lp_delta)) result.set(matchId, row.lp_delta);
+  }
+  return result;
+}
+
+function matchFromRow(row) {
+  return {
+    matchId: row.match_id,
+    endedAt: row.ended_at,
+    championName: row.champion_name,
+    kills: row.kills,
+    deaths: row.deaths,
+    assists: row.assists,
+    cs: row.cs,
+    durationSec: row.duration_sec,
+    win: row.win == null ? null : Boolean(row.win),
+    remake: row.remake == null ? null : Boolean(row.remake),
+    lpDelta: row.lp_delta_games === 1 ? row.lp_delta ?? undefined : undefined,
+  };
+}
+
+/** Donnees archivees d'un joueur sur un seul jour local. */
+export async function getArchivedDay(playerKey, startMs, endMs) {
+  const db = await openDatabase();
+  const rows = db.prepare(`
+    SELECT * FROM matches
+    WHERE player_key = ? AND queue_id = ? AND ended_at >= ? AND ended_at < ?
+    ORDER BY ended_at DESC
+  `).all(playerKey, config.queueId, startMs, endMs);
+
+  const rank = db.prepare(`
+    SELECT tier_after, rank_after, league_points_after
+    FROM matches
+    WHERE player_key = ? AND queue_id = ? AND ended_at < ? AND tier_after IS NOT NULL
+    ORDER BY ended_at DESC
+    LIMIT 1
+  `).get(playerKey, config.queueId, endMs);
+
+  const measured = db.prepare(`
+    SELECT SUM(lp_delta) AS delta, SUM(lp_delta_games) AS games
+    FROM matches
+    WHERE player_key = ? AND queue_id = ? AND ended_at >= ? AND ended_at < ? AND lp_delta IS NOT NULL
+  `).get(playerKey, config.queueId, startMs, endMs);
+
+  return {
+    matches: rows.map(matchFromRow),
+    entry: rank
+      ? {
+          tier: rank.tier_after,
+          rank: rank.rank_after,
+          leaguePoints: rank.league_points_after,
+        }
+      : null,
+    delta: Number.isFinite(measured?.delta) ? measured.delta : undefined,
+    measuredGames: Number(measured?.games ?? 0),
+  };
+}
+
+/** Dates ayant au moins une partie archivee, de la plus recente a la plus ancienne. */
+export async function listArchivedDates(playerKey = null, limit = 25) {
+  const db = await openDatabase();
+  const rows = playerKey
+    ? db.prepare(`
+        SELECT ended_at FROM matches
+        WHERE player_key = ? AND queue_id = ? AND ended_at IS NOT NULL
+        ORDER BY ended_at DESC
+        LIMIT 5000
+      `).all(playerKey, config.queueId)
+    : db.prepare(`
+        SELECT ended_at FROM matches
+        WHERE queue_id = ? AND ended_at IS NOT NULL
+        ORDER BY ended_at DESC
+        LIMIT 5000
+      `).all(config.queueId);
+
+  const dates = [];
+  const seen = new Set();
+  for (const row of rows) {
+    const label = formatDateFr(new Date(row.ended_at), config.timezone);
+    if (seen.has(label)) continue;
+    seen.add(label);
+    dates.push(label);
+    if (dates.length >= limit) break;
+  }
+  return dates;
+}
+
+export async function hasHistoryMarker(key) {
+  const db = await openDatabase();
+  return Boolean(db.prepare('SELECT 1 FROM metadata WHERE key = ?').get(key));
+}
+
+export async function setHistoryMarker(key, value = {}) {
+  const db = await openDatabase();
+  db.prepare(`
+    INSERT INTO metadata (key, value) VALUES (?, ?)
+    ON CONFLICT (key) DO UPDATE SET value = excluded.value
+  `).run(key, JSON.stringify(value));
+}
+
+export function closeHistory() {
+  if (database) database.close();
+  database = null;
+  databasePath = null;
+}
