@@ -7,7 +7,7 @@ comparaison**, rang, nombre de parties et bilan victoires/défaites.
 ```
 Résumé du 06-08-2026
 
-[icône] Sinnet #917zz
+[icône] Pseudo #TAG
 ## Diamant II — 14 LP
 🟢 +39 LP
 Nombre de games : 4 parties  |  Bilan : 3 V — 1 D  |  Winrate : 75 %
