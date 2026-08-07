@@ -109,6 +109,9 @@ async function collectPlayer(player, store, now) {
       delta,
       games: await countGames(puuid, previous, snapshot, now),
       iconUrl: await fetchIconUrl(puuid),
+      // Lecture locale en SQLite : le resume quotidien peut donc l'afficher
+      // pour tous les joueurs sans surcout d'appels Riot.
+      peak: await getPeak(player.key).catch(() => null),
     };
   } catch (err) {
     // Un joueur en erreur ne doit pas faire sauter le resume des autres.

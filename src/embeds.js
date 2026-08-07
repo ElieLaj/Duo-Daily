@@ -49,14 +49,32 @@ function describeAnsi(lp, delta, rank) {
   );
 }
 
-function describeClean(lp, delta, rank, emoji, note) {
+/**
+ * Ligne discrète du pic, en sous-texte Discord (`-#`) : petit et grisé, pour
+ * qu'il reste secondaire face au rang courant.
+ *
+ * N'est rendue que si le pic dépasse la position actuelle — sinon elle
+ * répéterait le rang affiché juste au-dessus.
+ */
+function peakLine(player) {
+  const peak = player.peak;
+  if (!peak) return '';
+  const actuel = ladderPoints(player.entry);
+  if (Number.isFinite(actuel) && peak.ladder <= actuel) return '';
+
+  const emoji = rankEmoji(peak.entry);
+  const rang = `${emoji ? emoji + ' ' : ''}${rankLabel(peak.entry)} ${peak.entry.leaguePoints ?? 0} LP`;
+  return `\n-# Pic : ${rang}`;
+}
+
+function describeClean(lp, delta, rank, emoji, note, peak = '') {
   const pastille = delta === null || delta === 0 ? '⚪' : delta > 0 ? '🟢' : '🔴';
   // "##" met le rang et les LP en gros ; la pastille porte la couleur du delta,
   // que la barre laterale ne peut plus indiquer puisqu'elle affiche le tier.
   // `note` precise sur quelle fenetre ce delta a ete mesure, quand elle differe
   // de la periode decrite par les champs en dessous.
   const ligne = `${pastille} **${deltaText(delta)}**` + (note ? `  ·  ${note}` : '');
-  return `## ${headline(lp, rank, emoji)}\n${ligne}${SPACER}`;
+  return `## ${headline(lp, rank, emoji)}\n${ligne}${peak}${SPACER}`;
 }
 
 /**
@@ -94,7 +112,7 @@ function playerEmbed(player, url, options = {}) {
     .setDescription(
       config.lpStyle === 'ansi'
         ? describeAnsi(lp, player.delta, rank)
-        : describeClean(lp, player.delta, rank, rankEmoji(player.entry), deltaNote),
+        : describeClean(lp, player.delta, rank, rankEmoji(player.entry), deltaNote, peakLine(player)),
     );
 
   // EMBLEM_STYLE=none par defaut : l'embleme de rang alourdit l'encart sans
@@ -238,20 +256,8 @@ export function buildPlayerDetailMessage(detail) {
     });
   }
 
-  // Le pic n'existe que grâce aux relevés du bot : Riot ne l'expose nulle part.
-  // On ne l'affiche donc que s'il dépasse la position actuelle, sinon il
-  // répéterait simplement le rang déjà lu juste au-dessus.
-  const currentLadder = ladderPoints(detail.entry);
-  if (detail.peak && (!Number.isFinite(currentLadder) || detail.peak.ladder > currentLadder)) {
-    const origine = detail.peak.manual
-      ? 'déclaré'
-      : `atteint le ${formatDateFr(new Date(detail.peak.sampledAt), config.timezone)}`;
-    embed.addFields({
-      name: 'Pic',
-      value: `${rankEmoji(detail.peak.entry)} ${rankLabel(detail.peak.entry)} ${detail.peak.entry.leaguePoints ?? 0} LP *(${origine})*`.trim(),
-    });
-  }
-
+  // Pas de champ « Pic » ici : il est déjà rendu en sous-texte sous la
+  // variation de LP par playerEmbed, discrètement, comme demandé.
   embed.addFields({ name: 'Profil', value: `[Voir sur op.gg](${url})` });
 
   const footer = [QUEUE_LABEL[config.queue] ?? config.queue, `résumé du ${detail.dateLabel}`];
