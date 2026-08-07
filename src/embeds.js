@@ -1,9 +1,9 @@
 import { EmbedBuilder } from 'discord.js';
 import { config } from './config.js';
-import { emblemUrl, rankLabel, tierColor } from './rank.js';
+import { emblemUrl, ladderPoints, rankLabel, tierColor } from './rank.js';
 import { rankEmoji } from './emojis.js';
 import { opggUrl } from './links.js';
-import { formatDateTimeFr } from './time.js';
+import { formatDateFr, formatDateTimeFr } from './time.js';
 
 const COLOR = { error: 0xb91c1c, win: 0x22c55e, loss: 0xef4444, neutral: 0x94a3b8, promotion: 0xf59e0b };
 
@@ -182,6 +182,9 @@ export function buildPlayerDetailMessage(detail) {
 
   const mesure = detail.historical ? detail.measuredGames : detail.games.total;
   const partiesLabel = detail.selectedDate ? `Parties du ${detail.dateLabel}` : 'Parties du jour';
+  // Le champ de comptage porte déjà `partiesLabel` : nommer la liste de la même
+  // façon donnerait deux champs homonymes dans le même encart.
+  const detailLabel = 'Détail des parties';
   const embed = playerEmbed(detail, url, {
     stats: jour,
     gamesLabel: partiesLabel,
@@ -224,14 +227,28 @@ export function buildPlayerDetailMessage(detail) {
 
     blocs.forEach((value, index) => {
       // Un nom de champ ne peut pas être vide côté Discord.
-      embed.addFields({ name: index === 0 ? `${partiesLabel} (${detail.matches.length})` : '(suite)', value });
+      embed.addFields({ name: index === 0 ? `${detailLabel} (${detail.matches.length})` : '(suite)', value });
     });
   } else {
     embed.addFields({
-      name: partiesLabel,
+      name: detailLabel,
       value: detail.selectedDate
         ? `*Aucune partie classée archivée le ${detail.dateLabel}.*`
         : '*Aucune partie classée aujourd’hui.*',
+    });
+  }
+
+  // Le pic n'existe que grâce aux relevés du bot : Riot ne l'expose nulle part.
+  // On ne l'affiche donc que s'il dépasse la position actuelle, sinon il
+  // répéterait simplement le rang déjà lu juste au-dessus.
+  const currentLadder = ladderPoints(detail.entry);
+  if (detail.peak && (!Number.isFinite(currentLadder) || detail.peak.ladder > currentLadder)) {
+    const origine = detail.peak.manual
+      ? 'déclaré'
+      : `atteint le ${formatDateFr(new Date(detail.peak.sampledAt), config.timezone)}`;
+    embed.addFields({
+      name: 'Pic',
+      value: `${rankEmoji(detail.peak.entry)} ${rankLabel(detail.peak.entry)} ${detail.peak.entry.leaguePoints ?? 0} LP *(${origine})*`.trim(),
     });
   }
 

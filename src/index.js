@@ -2,7 +2,7 @@
 // l'import de node:sqlite n'échoue avec un message incompréhensible.
 import './preflight.js';
 
-import { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder } from 'discord.js';
+import { Client, GatewayIntentBits, MessageFlags, REST, Routes, SlashCommandBuilder } from 'discord.js';
 import cron from 'node-cron';
 
 import { assertConfig, config } from './config.js';
@@ -14,13 +14,29 @@ import { loadRankEmojis, rankEmojiCount } from './emojis.js';
 import { initLogger, log } from './logger.js';
 import { buildPlayerDetail, buildReport, commitReport, primeDailySnapshots } from './report.js';
 import { loadPromotionRoles, promotionRoleIds } from './roles.js';
+import { APEX_TIERS, ladderPoints, rankLabel } from './rank.js';
 import { loadStore } from './store.js';
 import { lastScheduledOccurrence } from './time.js';
-import { closeHistory, initializeHistory, listArchivedDates } from './history.js';
+import { closeHistory, getPeak, initializeHistory, listArchivedDates, recordRankSample } from './history.js';
 
 const args = new Set(process.argv.slice(2));
 const DRY_RUN = args.has('--dry-run');
 const RUN_NOW = args.has('--now');
+
+// Paliers proposés par /pic. La valeur est le tier tel que Riot le nomme, le
+// libellé reste en français comme le reste de l'interface.
+const TIER_CHOICES = [
+  ['Fer', 'IRON'],
+  ['Bronze', 'BRONZE'],
+  ['Argent', 'SILVER'],
+  ['Or', 'GOLD'],
+  ['Platine', 'PLATINUM'],
+  ['Émeraude', 'EMERALD'],
+  ['Diamant', 'DIAMOND'],
+  ['Maître', 'MASTER'],
+  ['Grand Maître', 'GRANDMASTER'],
+  ['Challenger', 'CHALLENGER'],
+].map(([name, value]) => ({ name, value }));
 
 const COMMANDS = [
   new SlashCommandBuilder()
@@ -51,6 +67,34 @@ const COMMANDS = [
         .setName('date')
         .setDescription('Journée au format JJ-MM-AAAA (vide = aujourd’hui en temps réel)')
         .setAutocomplete(true),
+    )
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName('pic')
+    .setDescription('Déclare un pic atteint avant le suivi du bot (Riot ne le fournit pas)')
+    .addStringOption((option) =>
+      option.setName('joueur').setDescription('Joueur suivi').setRequired(true).setAutocomplete(true),
+    )
+    .addStringOption((option) =>
+      option
+        .setName('tier')
+        .setDescription('Palier atteint')
+        .setRequired(true)
+        .addChoices(...TIER_CHOICES),
+    )
+    .addStringOption((option) =>
+      option
+        .setName('division')
+        .setDescription('Division (ignorée pour Maître et au-dessus)')
+        .addChoices(
+          { name: 'I', value: 'I' },
+          { name: 'II', value: 'II' },
+          { name: 'III', value: 'III' },
+          { name: 'IV', value: 'IV' },
+        ),
+    )
+    .addIntegerOption((option) =>
+      option.setName('lp').setDescription('LP à ce moment-là (0 par défaut)').setMinValue(0).setMaxValue(5000),
     )
     .toJSON(),
 ];
@@ -139,6 +183,56 @@ async function runLiveCheck(client) {
   } finally {
     liveRunning = false;
   }
+}
+
+/**
+ * /pic : declare un rang atteint avant que le bot n'observe le joueur.
+ *
+ * Riot n'expose aucun historique de rang, donc tout ce qui precede le suivi est
+ * definitivement perdu. La declaration est enregistree comme un releve parmi
+ * les autres, avec `source = 'manual'` : le pic reste un simple maximum, sans
+ * cas particulier a gerer a la lecture.
+ */
+async function handlePeakCommand(interaction) {
+  const playerKey = interaction.options.getString('joueur');
+  const player = config.players.find((p) => p.key === playerKey);
+  if (!player) {
+    await interaction.reply({
+      content: `⚠️ « ${playerKey} » n'est pas un joueur suivi. Choisis-en un dans la liste proposée.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const tier = interaction.options.getString('tier');
+  const apex = APEX_TIERS.includes(tier);
+  // Maitre, Grand Maitre et Challenger n'ont pas de division ; en imposer une
+  // fausserait le calcul de position sur l'echelle.
+  const rank = apex ? 'I' : interaction.options.getString('division') ?? 'IV';
+  const leaguePoints = interaction.options.getInteger('lp') ?? 0;
+
+  const entry = { tier, rank, leaguePoints };
+  const ladder = ladderPoints(entry);
+  if (!Number.isFinite(ladder)) {
+    await interaction.reply({ content: '⚠️ Rang invalide.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  await recordRankSample({
+    playerKey: player.key,
+    playerLabel: player.label,
+    entry,
+    ladder,
+    source: 'manual',
+  });
+
+  const peak = await getPeak(player.key);
+  const retenu = peak && peak.ladder > ladder;
+  await interaction.reply(
+    retenu
+      ? `Relevé enregistré pour **${player.label}**, mais le pic reste **${rankLabel(peak.entry)} ${peak.entry.leaguePoints ?? 0} LP**, qui est plus haut.`
+      : `Pic de **${player.label}** fixé à **${rankLabel(entry)} ${leaguePoints} LP**.`,
+  );
 }
 
 async function main() {
@@ -260,7 +354,12 @@ async function main() {
 
     if (!interaction.isChatInputCommand()) return;
     const { commandName } = interaction;
-    if (commandName !== 'resume' && commandName !== 'joueur') return;
+    if (!['resume', 'joueur', 'pic'].includes(commandName)) return;
+
+    if (commandName === 'pic') {
+      await handlePeakCommand(interaction);
+      return;
+    }
 
     // La collecte Riot depasse les 3 s allouees a une reponse immediate.
     await interaction.deferReply();

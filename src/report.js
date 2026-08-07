@@ -4,7 +4,7 @@ import { profileIconUrl } from './ddragon.js';
 import { ladderPoints } from './rank.js';
 import { loadStore, updateStore } from './store.js';
 import { formatDateFr, parseDateFr, startOfDay } from './time.js';
-import { getArchivedDay, getLpDeltas } from './history.js';
+import { getArchivedDay, getLpDeltas, getPeak, recordRankSample } from './history.js';
 
 /**
  * Compte les parties jouees depuis le dernier releve.
@@ -80,6 +80,17 @@ async function collectPlayer(player, store, now) {
       losses: entry?.losses ?? null,
       ladder: ladderPoints(entry),
     };
+
+    // Alimente la trajectoire de rang a chaque lecture du classement : c'est
+    // la seule source possible du pic, Riot ne l'exposant nulle part. Purement
+    // annexe, un echec ne doit pas faire echouer le resume.
+    await recordRankSample({
+      playerKey: player.key,
+      playerLabel: player.label,
+      entry,
+      ladder: snapshot.ladder,
+      sampledAt: now.getTime(),
+    }).catch((err) => console.warn(`[pic] relevé impossible (${err.message})`));
 
     // On recalcule la position precedente depuis tier/rank/LP plutot que de
     // relire le champ `ladder` du fichier : celui-ci n'est qu'informatif et
@@ -257,7 +268,10 @@ export async function buildPlayerDetail(input, dateInput = null) {
   const releves = await getLpDeltas(player.key, matches.map((match) => match.matchId));
   for (const match of matches) match.lpDelta = releves.get(match.matchId);
 
-  return { ...detail, matches: annotateStreaks(matches), truncated };
+  // Le pic ne remonte qu'au debut du suivi, sauf declaration manuelle.
+  const peak = await getPeak(player.key).catch(() => null);
+
+  return { ...detail, matches: annotateStreaks(matches), truncated, peak };
 }
 
 /**

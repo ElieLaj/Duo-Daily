@@ -51,6 +51,29 @@ function migrateSchema(db) {
       ON matches (player_key, ended_at DESC);
     CREATE INDEX IF NOT EXISTS matches_ended_at
       ON matches (ended_at DESC);
+
+    -- Trajectoire de rang : un releve par changement de position sur l'echelle.
+    -- Riot n'expose aucun pic ni historique de rang, la seule facon d'en avoir
+    -- un est de l'echantillonner soi-meme au fil du temps.
+    CREATE TABLE IF NOT EXISTS rank_samples (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      player_key TEXT NOT NULL,
+      player_label TEXT,
+      queue_id INTEGER NOT NULL,
+      tier TEXT,
+      rank TEXT,
+      league_points INTEGER,
+      ladder INTEGER NOT NULL,
+      sampled_at INTEGER NOT NULL,
+      -- 'auto'   : releve par le bot
+      -- 'manual' : pic declare a la main, pour les rangs atteints avant le suivi
+      source TEXT NOT NULL DEFAULT 'auto'
+    );
+
+    CREATE INDEX IF NOT EXISTS rank_samples_peak
+      ON rank_samples (player_key, queue_id, ladder DESC);
+    CREATE INDEX IF NOT EXISTS rank_samples_time
+      ON rank_samples (player_key, queue_id, sampled_at DESC);
   `);
 
   // Migration additive pour une base creee avant le stockage explicite de la
@@ -121,11 +144,134 @@ function migrateRecentLp(db, store) {
   return imported;
 }
 
-/** Cree la base et importe une seule fois les variations encore presentes dans le JSON. */
+/**
+ * Amorce la trajectoire de rang avec les positions deja enregistrees dans les
+ * parties archivees, pour ne pas repartir de zero alors que la donnee existe.
+ */
+function migrateLadderSamples(db) {
+  const migrationKey = 'rank_samples_from_matches_v1';
+  let imported = 0;
+
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    if (db.prepare('SELECT 1 FROM metadata WHERE key = ?').get(migrationKey)) {
+      db.exec('COMMIT');
+      return 0;
+    }
+    const rows = db.prepare(`
+      SELECT player_key, player_label, queue_id, tier_after, rank_after,
+             league_points_after, ladder_after, ended_at, observed_at
+      FROM matches
+      WHERE ladder_after IS NOT NULL
+      ORDER BY COALESCE(ended_at, observed_at) ASC
+    `).all();
+
+    const insert = db.prepare(`
+      INSERT INTO rank_samples
+        (player_key, player_label, queue_id, tier, rank, league_points, ladder, sampled_at, source)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'auto')
+    `);
+    for (const row of rows) {
+      insert.run(
+        row.player_key,
+        row.player_label,
+        row.queue_id ?? config.queueId,
+        row.tier_after,
+        row.rank_after,
+        row.league_points_after,
+        row.ladder_after,
+        row.ended_at ?? row.observed_at,
+      );
+      imported++;
+    }
+    db.prepare('INSERT INTO metadata (key, value) VALUES (?, ?)').run(
+      migrationKey,
+      JSON.stringify({ completedAt: new Date().toISOString(), imported }),
+    );
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+  return imported;
+}
+
+/** Cree la base et importe une seule fois les donnees encore presentes ailleurs. */
 export async function initializeHistory(store = null) {
   const db = await openDatabase();
   const imported = migrateRecentLp(db, store ?? (await loadStore()));
-  return { path: config.historyPath, imported };
+  const samples = migrateLadderSamples(db);
+  return { path: config.historyPath, imported, samples };
+}
+
+/**
+ * Enregistre une position sur l'echelle.
+ *
+ * Les releves identiques au precedent sont ignores : sonder toutes les 3
+ * minutes remplirait sinon la table de doublons, alors qu'on veut une
+ * trajectoire, pas un journal de sondages. Une declaration manuelle est
+ * toujours ecrite, puisqu'elle porte une date differente du releve courant.
+ *
+ * @returns {Promise<boolean>} true si un releve a ete ajoute.
+ */
+export async function recordRankSample({
+  playerKey,
+  playerLabel = null,
+  entry,
+  ladder,
+  source = 'auto',
+  sampledAt = Date.now(),
+}) {
+  if (!Number.isFinite(ladder)) return false;
+  const db = await openDatabase();
+
+  if (source === 'auto') {
+    const dernier = db.prepare(`
+      SELECT ladder FROM rank_samples
+      WHERE player_key = ? AND queue_id = ? AND source = 'auto'
+      ORDER BY sampled_at DESC LIMIT 1
+    `).get(playerKey, config.queueId);
+    if (dernier && dernier.ladder === ladder) return false;
+  }
+
+  db.prepare(`
+    INSERT INTO rank_samples
+      (player_key, player_label, queue_id, tier, rank, league_points, ladder, sampled_at, source)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    playerKey,
+    playerLabel,
+    config.queueId,
+    entry?.tier ?? null,
+    entry?.rank ?? null,
+    entry?.leaguePoints ?? null,
+    ladder,
+    sampledAt,
+    source,
+  );
+  return true;
+}
+
+/**
+ * Meilleure position connue, releves automatiques et declarations manuelles
+ * confondues. `null` tant qu'aucun releve n'existe pour ce joueur.
+ */
+export async function getPeak(playerKey) {
+  const db = await openDatabase();
+  const row = db.prepare(`
+    SELECT tier, rank, league_points, ladder, sampled_at, source
+    FROM rank_samples
+    WHERE player_key = ? AND queue_id = ?
+    ORDER BY ladder DESC, sampled_at ASC
+    LIMIT 1
+  `).get(playerKey, config.queueId);
+  if (!row) return null;
+  return {
+    entry: { tier: row.tier, rank: row.rank, leaguePoints: row.league_points },
+    ladder: row.ladder,
+    sampledAt: row.sampled_at,
+    manual: row.source === 'manual',
+  };
 }
 
 const UPSERT_MATCH = `
