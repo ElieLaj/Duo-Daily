@@ -482,6 +482,93 @@ export async function setHistoryMarker(key, value = {}) {
   `).run(key, JSON.stringify(value));
 }
 
+/**
+ * Agregats de la journee, tous joueurs confondus.
+ *
+ * Calcules sur les parties archivees, donc sur ce que le bot a reellement
+ * observe : une partie jouee pendant un arret du bot n'y figure pas.
+ */
+export async function getDayTotals(startMs, endMs) {
+  const db = await openDatabase();
+  const rows = db.prepare(`
+    SELECT player_key, player_label, win, remake, duration_sec, kills, deaths, assists
+    FROM matches
+    WHERE queue_id = ? AND ended_at >= ? AND ended_at < ?
+    ORDER BY player_key, ended_at ASC
+  `).all(config.queueId, startMs, endMs);
+
+  let games = 0;
+  let seconds = 0;
+  const parJoueur = new Map();
+
+  for (const row of rows) {
+    if (row.remake) continue; // un remake n'a pas compte au classement
+    games++;
+    seconds += row.duration_sec ?? 0;
+
+    const stats = parJoueur.get(row.player_key) ?? {
+      label: row.player_label,
+      wins: 0,
+      losses: 0,
+      // Series les plus longues de la journee, et non series en cours.
+      bestWin: 0,
+      bestLoss: 0,
+      currentWin: 0,
+      currentLoss: 0,
+      games: 0,
+      kills: 0,
+      deaths: 0,
+      assists: 0,
+    };
+    stats.games++;
+    stats.kills += row.kills ?? 0;
+    stats.deaths += row.deaths ?? 0;
+    stats.assists += row.assists ?? 0;
+    if (row.win) {
+      stats.wins++;
+      stats.currentWin++;
+      stats.currentLoss = 0;
+      stats.bestWin = Math.max(stats.bestWin, stats.currentWin);
+    } else {
+      stats.losses++;
+      stats.currentLoss++;
+      stats.currentWin = 0;
+      stats.bestLoss = Math.max(stats.bestLoss, stats.currentLoss);
+    }
+    parJoueur.set(row.player_key, stats);
+  }
+
+  const meilleure = (champ) =>
+    [...parJoueur.entries()]
+      .map(([key, s]) => ({ key, label: s.label, longueur: s[champ] }))
+      .filter((s) => s.longueur >= 2)
+      .sort((a, b) => b.longueur - a.longueur)[0] ?? null;
+
+  const liste = [...parJoueur.entries()].map(([key, s]) => ({
+    key,
+    label: s.label,
+    games: s.games,
+    kills: s.kills,
+    deaths: s.deaths,
+    assists: s.assists,
+    // Une mort de moins ne doit pas valoir un KDA infini : sans mort, on
+    // compte comme s'il y en avait eu une, convention usuelle du "KDA parfait".
+    kda: (s.kills + s.assists) / Math.max(1, s.deaths),
+  }));
+  const top = (compare) => (liste.length ? liste.reduce(compare) : null);
+
+  return {
+    games,
+    seconds,
+    joueurs: parJoueur.size,
+    meilleureSerieVictoires: meilleure('bestWin'),
+    meilleureSerieDefaites: meilleure('bestLoss'),
+    plusDeParties: top((a, b) => (b.games > a.games ? b : a)),
+    meilleurKda: top((a, b) => (b.kda > a.kda ? b : a)),
+    plusDeMorts: top((a, b) => (b.deaths > a.deaths ? b : a)),
+  };
+}
+
 /** Associe un joueur suivi a un membre Discord. Remplace une liaison existante. */
 export async function setPlayerLink(playerKey, discordId, linkedBy = null) {
   const db = await openDatabase();

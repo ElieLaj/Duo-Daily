@@ -57,6 +57,9 @@ const COMMANDS = [
         .setDescription('Journée archivée au format JJ-MM-AAAA (vide = résumé actuel)')
         .setAutocomplete(true),
     )
+    .addBooleanOption((option) =>
+      option.setName('global').setDescription('N’afficher que le bilan de la journée, sans le détail par joueur'),
+    )
     .toJSON(),
   new SlashCommandBuilder()
     .setName('joueur')
@@ -433,7 +436,8 @@ async function main() {
         // Pas de commitReport ici : un apercu a la demande ne doit pas consommer
         // le delta que le resume du soir doit encore afficher.
         const date = interaction.options.getString('date');
-        const [premier, ...suite] = buildMessages(await buildReport(date));
+        const onlyGlobal = interaction.options.getBoolean('global') ?? false;
+        const [premier, ...suite] = buildMessages(await buildReport(date), { onlyGlobal });
         await interaction.editReply(premier);
         // Une reponse ne porte que 10 encarts : le reste part en messages liés.
         for (const message of suite) await interaction.followUp(message);
