@@ -284,6 +284,20 @@ function issueText(match, verbose = false) {
   return verbose ? `Victoire 🔥 ${match.streak} d'affilée` : 'Victoire 🔥';
 }
 
+/**
+ * Ligne de record personnel, en sous-texte et sans mention : battre son pic
+ * arrive bien plus souvent qu'une montée de rang, ça ne justifie pas de
+ * notifier tout le monde.
+ */
+function recordLine(record) {
+  if (!record) return '';
+  const ancien = `${rankLabel(record.depuis)} ${record.depuis.leaguePoints ?? 0} LP`;
+  const depuis = Number.isFinite(record.jours)
+    ? ` — ancien record : ${ancien}, il y a ${record.jours} jour${record.jours > 1 ? 's' : ''}`
+    : ` — dépasse le pic déclaré : ${ancien}`;
+  return `\n-# 🏔️ Nouveau record personnel${depuis}`;
+}
+
 /** "32:15" */
 function durationText(seconds) {
   if (!Number.isFinite(seconds) || seconds <= 0) return null;
@@ -295,7 +309,17 @@ function durationText(seconds) {
  * Annonce d'une partie qui vient de se terminer (surveillance périodique).
  * `match.emoji` et `match.champion` sont résolus en amont, comme pour /joueur.
  */
-export function buildMatchMessage({ player, match, entry, delta, deltaGames = 1, promotion, roleIds = [], skipped }) {
+export function buildMatchMessage({
+  player,
+  match,
+  entry,
+  delta,
+  deltaGames = 1,
+  promotion,
+  record,
+  roleIds = [],
+  skipped,
+}) {
   const url = opggUrl(player.gameName, player.tagLine);
   const issue = issueText(match, true);
   const icon = match.emoji ? `${match.emoji} ` : '';
@@ -308,7 +332,9 @@ export function buildMatchMessage({ player, match, entry, delta, deltaGames = 1,
   const embed = new EmbedBuilder()
     .setColor(match.remake ? COLOR.neutral : match.win ? COLOR.win : COLOR.loss)
     .setAuthor({ name: `${player.label} a terminé une partie`, iconURL: player.iconUrl ?? undefined, url })
-    .setDescription(`## ${icon}${match.champion?.name ?? match.championName} — ${issue}${lpTitre}`);
+    .setDescription(
+      `## ${icon}${match.champion?.name ?? match.championName} — ${issue}${lpTitre}` + recordLine(record),
+    );
 
   const fields = [{ name: 'K/D/A', value: kdaText(match), inline: true }];
   const farm = farmText(match);

@@ -96,6 +96,11 @@ export const config = {
   liveIntervalMin: Math.max(1, Number(str('LIVE_INTERVAL_MIN', '3')) || 3),
   // Salon dédié aux annonces de partie ; à défaut, celui du résumé.
   liveChannelId: str('LIVE_CHANNEL_ID') || str('DISCORD_CHANNEL_ID'),
+  // Ancienneté minimale, en jours, du pic battu pour que le record soit
+  // annoncé. Sans ce seuil, un joueur qui grimpe déclencherait la mention à
+  // chaque victoire. 0 = annoncer chaque dépassement.
+  peakAnnounceDays: Math.max(0, Number(str('PEAK_ANNOUNCE_DAYS', '7')) || 0),
+
   // Rôles mentionnés lors d'une montée de rang : noms ou identifiants séparés
   // par des virgules. Vide = aucune mention.
   promotionRoles: str('PROMOTION_ROLE', 'Goat')
