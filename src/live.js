@@ -2,7 +2,7 @@ import { config } from './config.js';
 import { getAccount, getLeagueEntries, getMatchIds, getMatchResult } from './riot.js';
 import { divisionIndex, ladderPoints, rankLabel } from './rank.js';
 import { loadStore, updateStore } from './store.js';
-import { archiveFinishedGames, hasHistoryMarker, recordRankSample, setHistoryMarker } from './history.js';
+import { archiveFinishedGames, getPeak, hasHistoryMarker, recordRankSample, setHistoryMarker } from './history.js';
 import { formatDateFr, startOfDay } from './time.js';
 
 /**
@@ -75,6 +75,11 @@ async function pollPlayer(player, store) {
   const ladder = ladderPoints(entry);
   const delta = Number.isFinite(previous?.ladder) && Number.isFinite(ladder) ? ladder - previous.ladder : null;
 
+  // IMPERATIF : lire le pic AVANT d'enregistrer le nouveau releve. Dans l'autre
+  // ordre, le maximum inclurait deja la position courante et aucun record ne
+  // serait jamais detecte.
+  const picAvant = await getPeak(player.key).catch(() => null);
+
   // Trajectoire de rang : c'est ici qu'elle est la plus fine, puisque le rang
   // est relu exactement quand la position dans l'historique bouge.
   await recordRankSample({
@@ -83,6 +88,20 @@ async function pollPlayer(player, store) {
     entry,
     ladder,
   }).catch((err) => console.warn(`[pic] relevé impossible (${err.message})`));
+
+  // Record personnel. Un pic est depasse des le premier LP gagne au-dessus du
+  // meilleur score : sans condition d'anciennete, un joueur qui grimpe
+  // declencherait la ligne a chaque victoire, ce qui la viderait de son sens.
+  // On n'annonce donc que le fait de battre un record qui datait un peu.
+  let record = null;
+  if (picAvant && Number.isFinite(ladder) && ladder > picAvant.ladder) {
+    const jours = Math.floor((Date.now() - picAvant.sampledAt) / 86_400_000);
+    // Un pic declare a la main porte la date de la declaration, pas celle du
+    // rang atteint : son anciennete ne veut rien dire, on l'annonce toujours.
+    if (picAvant.manual || jours >= config.peakAnnounceDays) {
+      record = { depuis: picAvant.entry, jours: picAvant.manual ? null : jours };
+    }
+  }
 
   // Montee de rang : on compare les paliers, pas les LP. Le palier precedent
   // provient du meme releve que la reference de LP, donc la comparaison porte
@@ -135,6 +154,7 @@ async function pollPlayer(player, store) {
     deltaGames: index === matches.length - 1 ? fresh.length : 0,
     // La promotion, comme la variation, n'est portee que par la plus recente.
     promotion: index === matches.length - 1 ? promotion : null,
+    record: index === matches.length - 1 ? record : null,
     skipped: Math.max(0, matches.length - MAX_ANNOUNCES),
   }));
 
