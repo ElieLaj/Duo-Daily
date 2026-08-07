@@ -162,6 +162,9 @@ async function pollPlayer(player, store) {
   for (const match of matches) {
     if (!match.remake) {
       if (match.win) {
+        // Serie de defaites brisee : on capture sa longueur AVANT de la
+        // remettre a zero, sinon l'information est perdue.
+        if (lossStreak >= 3) match.brokeLossStreak = lossStreak;
         streak += 1;
         lossStreak = 0;
       } else {

@@ -430,6 +430,12 @@ export function buildMatchMessage({
   // « t'as loosé deux fois » ne s'adresse visiblement à personne.
   if (nargue) entete.push(links.has(player.key) ? `${moi} ${nargue}` : nargue);
 
+  // Série de défaites brisée. `brokeLossStreak` porte la longueur d'avant la
+  // victoire, capturée au moment de la remise à zéro.
+  if (match.brokeLossStreak >= STREAK_MIN) {
+    entete.push(`🎉 ${moi} a triomphé de la looser queue ! *(${match.brokeLossStreak} défaites d'affilée)*`);
+  }
+
   entete.push(...crossingLines(player, croisements, links));
 
   if (promotion) {
@@ -452,6 +458,88 @@ export function buildMatchMessage({
   return message;
 }
 
+/** "3 h 42" / "48 min" */
+function dureeLongue(seconds) {
+  if (!Number.isFinite(seconds) || seconds <= 0) return null;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} min`;
+  const heures = Math.floor(minutes / 60);
+  const reste = minutes % 60;
+  return reste ? `${heures} h ${String(reste).padStart(2, '0')}` : `${heures} h`;
+}
+
+/**
+ * Bilan global de la journée, en clôture du résumé.
+ *
+ * Les compteurs de parties et de temps viennent des parties archivées, donc de
+ * ce que le bot a réellement observé : une partie jouée pendant un arrêt du
+ * bot n'y figure pas. Le meilleur gain de LP vient en revanche des relevés de
+ * classement, qui eux ne dépendent pas de l'archivage.
+ */
+function summaryEmbed(report) {
+  const embed = new EmbedBuilder().setColor(0x5865f2).setTitle('📊 Bilan de la journée');
+  const fields = [];
+
+  // Le maximum est recalculé plutôt que pris en tête de liste : dépendre du
+  // tri effectué ailleurs serait un couplage invisible, qui donnerait un
+  // « mieux placé » faux le jour où l'ordre changerait.
+  const classables = report.players.filter((p) => !p.error && Number.isFinite(ladderPoints(p.entry)));
+  const meilleur = classables.length
+    ? classables.reduce((a, b) => (ladderPoints(b.entry) > ladderPoints(a.entry) ? b : a))
+    : null;
+  if (meilleur) {
+    fields.push({
+      name: '👑 Mieux placé',
+      value: `**${meilleur.label}** — ${rankEmoji(meilleur.entry)} ${rankLabel(meilleur.entry)} ${meilleur.entry.leaguePoints} LP`.replace(/\s+/g, ' '),
+      inline: false,
+    });
+  }
+
+  const gains = report.players.filter((p) => !p.error && Number.isFinite(p.delta) && p.delta > 0);
+  if (gains.length) {
+    const top = gains.reduce((a, b) => (b.delta > a.delta ? b : a));
+    fields.push({ name: '📈 Meilleur gain de LP', value: `**${top.label}** — +${top.delta} LP`, inline: true });
+  }
+
+  const totals = report.totals;
+  if (totals?.meilleureSerieVictoires) {
+    const s = totals.meilleureSerieVictoires;
+    fields.push({ name: '🔥 Plus longue série', value: `**${s.label}** — ${s.longueur} victoires`, inline: true });
+  }
+  if (totals?.meilleureSerieDefaites) {
+    const s = totals.meilleureSerieDefaites;
+    fields.push({ name: '🤡 Pire série', value: `**${s.label}** — ${s.longueur} défaites`, inline: true });
+  }
+
+  if (totals?.plusDeParties) {
+    const s = totals.plusDeParties;
+    fields.push({ name: '🕹️ Plus de parties', value: `**${s.label}** — ${s.games}`, inline: true });
+  }
+  if (totals?.meilleurKda) {
+    const s = totals.meilleurKda;
+    fields.push({
+      name: '🎯 Meilleur KDA',
+      value: `**${s.label}** — ${s.kda.toFixed(1)} *(${s.kills}/${s.deaths}/${s.assists})*`,
+      inline: true,
+    });
+  }
+  if (totals?.plusDeMorts) {
+    const s = totals.plusDeMorts;
+    fields.push({ name: '💀 Plus de morts', value: `**${s.label}** — ${s.deaths}`, inline: true });
+  }
+
+  if (totals?.games) {
+    fields.push({ name: '🎮 Parties lancées', value: `${totals.games}`, inline: true });
+    const duree = dureeLongue(totals.seconds);
+    if (duree) fields.push({ name: '⏱️ Temps cumulé sur LoL', value: duree, inline: true });
+  }
+
+  if (!fields.length) return null;
+  embed.addFields(fields);
+  embed.setFooter({ text: 'Parties et temps comptés sur ce que le bot a observé' });
+  return embed;
+}
+
 // Discord refuse un message de plus de 10 encarts : au-delà, le résumé doit
 // être découpé, sans quoi l'envoi échouerait entièrement.
 const MAX_EMBEDS = 10;
@@ -460,7 +548,18 @@ const MAX_EMBEDS = 10;
  * Résumé complet, découpé en autant de messages que nécessaire.
  * @returns {Array<{content?:string, embeds:Array}>} à envoyer dans l'ordre.
  */
-export function buildMessages(report) {
+/**
+ * @param {object} [options]
+ * @param {boolean} [options.onlyGlobal] ne renvoyer que le bilan de la journée.
+ */
+export function buildMessages(report, options = {}) {
+  if (options.onlyGlobal) {
+    const bilan = summaryEmbed(report);
+    return bilan
+      ? [{ content: `## Bilan du ${report.dateLabel}`, embeds: [bilan] }]
+      : [{ content: `Aucune donnée à résumer pour le ${report.dateLabel}.`, embeds: [] }];
+  }
+
   const embeds = report.players.map((player) =>
     playerEmbed(player, opggUrl(player.gameName, player.tagLine), {
       gamesLabel: report.historical ? 'Parties de la journée' : 'Nombre de games',
@@ -474,6 +573,10 @@ export function buildMessages(report) {
   const footer = [QUEUE_LABEL[config.queue] ?? config.queue];
   if (report.comparedTo) footer.push(`comparé au ${formatDateTimeFr(report.comparedTo, config.timezone)}`);
   embeds.at(-1)?.setFooter({ text: footer.join(' · ') });
+
+  // Le bilan ferme le résumé, après tous les joueurs.
+  const bilan = summaryEmbed(report);
+  if (bilan) embeds.push(bilan);
 
   const messages = [];
   for (let i = 0; i < embeds.length; i += MAX_EMBEDS) {

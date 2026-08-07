@@ -4,7 +4,7 @@ import { profileIconUrl } from './ddragon.js';
 import { ladderPoints } from './rank.js';
 import { loadStore, updateStore } from './store.js';
 import { formatDateFr, parseDateFr, startOfDay } from './time.js';
-import { getArchivedDay, getLpDeltas, getPeak, recordRankSample } from './history.js';
+import { getArchivedDay, getDayTotals, getLpDeltas, getPeak, recordRankSample } from './history.js';
 
 /**
  * Compte les parties jouees depuis le dernier releve.
@@ -184,11 +184,22 @@ export async function buildReport(dateInput = null) {
 
   const comparedTo = players.find((p) => p.previous?.takenAt)?.previous?.takenAt ?? store.lastReportAt;
 
+  // Classement par position sur l'echelle : le resume se lit alors comme un
+  // classement, les non-classes fermant la marche.
+  players.sort((a, b) => (ladderPoints(b.entry) ?? -1) - (ladderPoints(a.entry) ?? -1));
+
+  const debut = startOfDay(now, config.timezone);
+  const totals = await getDayTotals(debut, now.getTime()).catch((err) => {
+    console.warn(`[bilan] agrégats du jour indisponibles (${err.message})`);
+    return null;
+  });
+
   return {
     at: now,
     dateLabel: formatDateFr(now, config.timezone),
     comparedTo: comparedTo ? new Date(comparedTo) : null,
     players,
+    totals,
   };
 }
 
