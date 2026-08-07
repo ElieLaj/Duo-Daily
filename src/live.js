@@ -2,7 +2,7 @@ import { config } from './config.js';
 import { getAccount, getLeagueEntries, getMatchIds, getMatchResult } from './riot.js';
 import { divisionIndex, ladderPoints, rankLabel } from './rank.js';
 import { loadStore, updateStore } from './store.js';
-import { archiveFinishedGames, hasHistoryMarker, setHistoryMarker } from './history.js';
+import { archiveFinishedGames, hasHistoryMarker, recordRankSample, setHistoryMarker } from './history.js';
 import { formatDateFr, startOfDay } from './time.js';
 
 /**
@@ -74,6 +74,15 @@ async function pollPlayer(player, store) {
   const entry = entries.find((e) => e.queueType === config.queue) ?? null;
   const ladder = ladderPoints(entry);
   const delta = Number.isFinite(previous?.ladder) && Number.isFinite(ladder) ? ladder - previous.ladder : null;
+
+  // Trajectoire de rang : c'est ici qu'elle est la plus fine, puisque le rang
+  // est relu exactement quand la position dans l'historique bouge.
+  await recordRankSample({
+    playerKey: player.key,
+    playerLabel: player.label,
+    entry,
+    ladder,
+  }).catch((err) => console.warn(`[pic] relevé impossible (${err.message})`));
 
   // Montee de rang : on compare les paliers, pas les LP. Le palier precedent
   // provient du meme releve que la reference de LP, donc la comparaison porte
