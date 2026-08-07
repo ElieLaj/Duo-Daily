@@ -97,9 +97,10 @@ export const config = {
   // Salon dédié aux annonces de partie ; à défaut, celui du résumé.
   liveChannelId: str('LIVE_CHANNEL_ID') || str('DISCORD_CHANNEL_ID'),
   // Ancienneté minimale, en jours, du pic battu pour que le record soit
-  // annoncé. Sans ce seuil, un joueur qui grimpe déclencherait la mention à
-  // chaque victoire. 0 = annoncer chaque dépassement.
-  peakAnnounceDays: Math.max(0, Number(str('PEAK_ANNOUNCE_DAYS', '7')) || 0),
+  // annoncé. 0 (défaut) annonce chaque dépassement — y compris pendant une
+  // montée continue, où chaque victoire bat le pic de la précédente. Un seuil
+  // plus élevé ne retient que le fait de battre un record un peu ancien.
+  peakAnnounceDays: Math.max(0, Number(str('PEAK_ANNOUNCE_DAYS', '0')) || 0),
 
   // Rôles mentionnés lors d'une montée de rang : noms ou identifiants séparés
   // par des virgules. Vide = aucune mention.
