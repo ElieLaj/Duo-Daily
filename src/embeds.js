@@ -328,6 +328,15 @@ function durationText(seconds) {
  * Annonce d'une partie qui vient de se terminer (surveillance périodique).
  * `match.emoji` et `match.champion` sont résolus en amont, comme pour /joueur.
  */
+/** Une ligne par joueur suivi dépassé ou repassé pendant la partie. */
+function crossingLines(player, croisements) {
+  return croisements.map((c) =>
+    c.sens === 'devant'
+      ? `📈 **${player.label}** passe devant **${c.label}** !`
+      : `📉 **${player.label}** repasse derrière **${c.label}** !`,
+  );
+}
+
 export function buildMatchMessage({
   player,
   match,
@@ -336,6 +345,7 @@ export function buildMatchMessage({
   deltaGames = 1,
   promotion,
   record,
+  croisements = [],
   roleIds = [],
   skipped,
 }) {
@@ -404,6 +414,8 @@ export function buildMatchMessage({
 
   const nargue = nearClownLine(match);
   if (nargue) entete.push(nargue);
+
+  entete.push(...crossingLines(player, croisements));
 
   if (promotion) {
     embed.setColor(COLOR.promotion);

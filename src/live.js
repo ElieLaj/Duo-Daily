@@ -103,6 +103,25 @@ async function pollPlayer(player, store) {
     }
   }
 
+  // Croisements avec les autres joueurs suivis. Les inegalites sont strictes
+  // des deux cotes : il faut avoir ete reellement devant ou derriere avant la
+  // partie, une egalite de LP ne compte donc pas comme un depassement.
+  //
+  // La position des autres vient de leur dernier releve connu. Deux joueurs
+  // sondes dans le meme passage se comparent donc a l'etat d'avant ce passage,
+  // ce qui est sans consequence : un croisement manque sera detecte au sondage
+  // suivant, des que l'un des deux rejouera.
+  const croisements = [];
+  if (Number.isFinite(previous?.ladder) && Number.isFinite(ladder)) {
+    for (const autre of config.players) {
+      if (autre.key === player.key) continue;
+      const sien = store.live?.[autre.key]?.ladder ?? store.players?.[autre.key]?.ladder;
+      if (!Number.isFinite(sien)) continue;
+      if (previous.ladder < sien && ladder > sien) croisements.push({ label: autre.label, sens: 'devant' });
+      else if (previous.ladder > sien && ladder < sien) croisements.push({ label: autre.label, sens: 'derriere' });
+    }
+  }
+
   // Montee de rang : on compare les paliers, pas les LP. Le palier precedent
   // provient du meme releve que la reference de LP, donc la comparaison porte
   // bien sur l'intervalle annonce.
@@ -166,6 +185,9 @@ async function pollPlayer(player, store) {
     // La promotion, comme la variation, n'est portee que par la plus recente.
     promotion: index === matches.length - 1 ? promotion : null,
     record: index === matches.length - 1 ? record : null,
+    // Comme la variation et la promotion, les croisements portent sur tout le
+    // lot : seule la partie la plus recente peut les revendiquer.
+    croisements: index === matches.length - 1 ? croisements : [],
     skipped: Math.max(0, matches.length - MAX_ANNOUNCES),
   }));
 
