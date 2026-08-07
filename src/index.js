@@ -8,7 +8,13 @@ import cron from 'node-cron';
 import { assertConfig, config } from './config.js';
 import { championEmoji } from './champemojis.js';
 import { getChampion } from './champions.js';
-import { buildMatchMessage, buildMessages, buildPlayerDetailMessage, renderText } from './embeds.js';
+import {
+  buildDefeatGifMessage,
+  buildMatchMessage,
+  buildMessages,
+  buildPlayerDetailMessage,
+  renderText,
+} from './embeds.js';
 import { backfillTodayHistory, pollFinishedGames, primeLiveState } from './live.js';
 import { loadRankEmojis, rankEmojiCount } from './emojis.js';
 import { initLogger, log } from './logger.js';
@@ -197,6 +203,11 @@ async function runLiveCheck(client) {
     for (const announce of announces) {
       await decorateMatch(client, announce.match);
       await channel.send(buildMatchMessage({ ...announce, links, roleIds: promotionRoleIds() }));
+
+      // Message a part : Discord ne genere l'apercu d'un lien que depuis le
+      // contenu d'un message, jamais depuis un encart.
+      const gif = buildDefeatGifMessage(announce.player, announce.match, links);
+      if (gif) await channel.send(gif);
       if (announce.promotion) {
         log(`Montée de rang : ${announce.player.label} → ${announce.promotion.vers}`);
       }
