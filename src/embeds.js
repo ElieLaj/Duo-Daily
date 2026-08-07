@@ -495,10 +495,18 @@ function summaryEmbed(report) {
     });
   }
 
-  const gains = report.players.filter((p) => !p.error && Number.isFinite(p.delta) && p.delta > 0);
+  const variations = report.players.filter((p) => !p.error && Number.isFinite(p.delta));
+
+  const gains = variations.filter((p) => p.delta > 0);
   if (gains.length) {
     const top = gains.reduce((a, b) => (b.delta > a.delta ? b : a));
     fields.push({ name: '📈 Meilleur gain de LP', value: `**${top.label}** — +${top.delta} LP`, inline: true });
+  }
+
+  const pertes = variations.filter((p) => p.delta < 0);
+  if (pertes.length) {
+    const pire = pertes.reduce((a, b) => (b.delta < a.delta ? b : a));
+    fields.push({ name: '📉 Plus grosse perte de LP', value: `**${pire.label}** — ${pire.delta} LP`, inline: true });
   }
 
   const totals = report.totals;
@@ -532,6 +540,16 @@ function summaryEmbed(report) {
     fields.push({ name: '🎮 Parties lancées', value: `${totals.games}`, inline: true });
     const duree = dureeLongue(totals.seconds);
     if (duree) fields.push({ name: '⏱️ Temps cumulé sur LoL', value: duree, inline: true });
+  }
+
+  // Sans partie archivée, tout ce qui en dépend est absent. Le dire, plutôt
+  // que de laisser croire à un encart tronqué.
+  if (!totals?.games) {
+    fields.push({
+      name: '🎮 Parties',
+      value: "*Aucune partie observée sur cette période — le détail des parties, des séries et du temps de jeu n'est disponible que pour les journées où le bot tournait.*",
+      inline: false,
+    });
   }
 
   if (!fields.length) return null;
