@@ -11,7 +11,8 @@
     "dry": "node src/index.js --dry-run",
     "preview": "node scripts/preview.js",
     "test": "node --test",
-    "preview:live": "node scripts/preview-live.js"
+    "preview:live": "node scripts/preview-live.js",
+    "test:bot": "node index.js --test"
   },
   "dependencies": {
     "discord.js": "^14.16.3",
