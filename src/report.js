@@ -158,7 +158,10 @@ async function archivedPlayer(player, period, withMatches = false) {
     gameName: player.gameName,
     tagLine: player.tagLine,
     entry: archived.entry,
-    rankUnknown: !archived.entry,
+    // « Rang inconnu » seulement si l'information manque vraiment. Un joueur
+    // jamais classé pendant le suivi n'est pas un cas d'ignorance : il relève
+    // de l'affichage réduit des non-classés.
+    rankUnknown: !archived.entry && !archived.neverRanked,
     delta: archived.delta,
     games,
     historical: true,
