@@ -40,13 +40,12 @@ function headline(lp, rank, emoji = '') {
 
 // Pas d'emoji ici : un emoji custom ne s'affiche pas dans un bloc de code.
 function describeAnsi(lp, delta, rank) {
-  const color = delta === null || delta === 0 ? ANSI.grey : delta > 0 ? ANSI.green : ANSI.red;
-  return (
-    '```ansi\n' +
-    `${ANSI.bold}${headline(lp, rank)}${ANSI.reset}  ${color}(${deltaText(delta)})${ANSI.reset}` +
-    '\n```' +
-    SPACER
-  );
+  // Comme en style "clean" : sans variation mesurée, on n'écrit rien.
+  const variation =
+    delta === undefined
+      ? ''
+      : `  ${delta === null || delta === 0 ? ANSI.grey : delta > 0 ? ANSI.green : ANSI.red}(${deltaText(delta)})${ANSI.reset}`;
+  return '```ansi\n' + `${ANSI.bold}${headline(lp, rank)}${ANSI.reset}${variation}` + '\n```' + SPACER;
 }
 
 /**
@@ -68,13 +67,19 @@ function peakLine(player) {
 }
 
 function describeClean(lp, delta, rank, emoji, note, peak = '') {
+  const titre = `## ${headline(lp, rank, emoji)}`;
+
+  // Variation non mesurée (journée archivée sans relevé) : la ligne est
+  // simplement omise. L'annoncer n'apporte rien et alourdit l'encart.
+  if (delta === undefined) return `${titre}${peak}${SPACER}`;
+
   const pastille = delta === null || delta === 0 ? '⚪' : delta > 0 ? '🟢' : '🔴';
   // "##" met le rang et les LP en gros ; la pastille porte la couleur du delta,
   // que la barre laterale ne peut plus indiquer puisqu'elle affiche le tier.
   // `note` precise sur quelle fenetre ce delta a ete mesure, quand elle differe
   // de la periode decrite par les champs en dessous.
   const ligne = `${pastille} **${deltaText(delta)}**` + (note ? `  ·  ${note}` : '');
-  return `## ${headline(lp, rank, emoji)}\n${ligne}${peak}${SPACER}`;
+  return `${titre}\n${ligne}${peak}${SPACER}`;
 }
 
 /**

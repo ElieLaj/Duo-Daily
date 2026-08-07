@@ -408,13 +408,35 @@ export async function getArchivedDay(playerKey, startMs, endMs) {
     ORDER BY ended_at DESC
   `).all(playerKey, config.queueId, startMs, endMs);
 
-  const rank = db.prepare(`
+  let rank = db.prepare(`
     SELECT tier_after, rank_after, league_points_after
     FROM matches
     WHERE player_key = ? AND queue_id = ? AND ended_at < ? AND tier_after IS NOT NULL
     ORDER BY ended_at DESC
     LIMIT 1
   `).get(playerKey, config.queueId, endMs);
+
+  // Repli sur la trajectoire : un joueur qui n'a pas joue ce jour-la n'a aucune
+  // partie archivee, mais son rang a pu etre releve par ailleurs.
+  if (!rank) {
+    const sample = db.prepare(`
+      SELECT tier, rank, league_points FROM rank_samples
+      WHERE player_key = ? AND queue_id = ? AND sampled_at < ? AND source = 'auto'
+      ORDER BY sampled_at DESC LIMIT 1
+    `).get(playerKey, config.queueId, endMs);
+    if (sample) {
+      rank = { tier_after: sample.tier, rank_after: sample.rank, league_points_after: sample.league_points };
+    }
+  }
+
+  // Aucun releve automatique n'existe pour ce joueur, jamais. Or un releve
+  // n'est ecrit que lorsqu'une position sur l'echelle existe : l'absence
+  // totale signifie donc que le joueur n'a pas ete classe pendant le suivi,
+  // et non que l'information manque.
+  const neverRanked =
+    !rank && !db.prepare(`
+      SELECT 1 FROM rank_samples WHERE player_key = ? AND queue_id = ? AND source = 'auto' LIMIT 1
+    `).get(playerKey, config.queueId);
 
   const measured = db.prepare(`
     SELECT SUM(lp_delta) AS delta, SUM(lp_delta_games) AS games
@@ -433,6 +455,7 @@ export async function getArchivedDay(playerKey, startMs, endMs) {
       : null,
     delta: Number.isFinite(measured?.delta) ? measured.delta : undefined,
     measuredGames: Number(measured?.games ?? 0),
+    neverRanked,
   };
 }
 
