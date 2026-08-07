@@ -289,6 +289,21 @@ function issueText(match, verbose = false) {
 }
 
 /**
+ * Avertissement à la deuxième défaite d'affilée, une avant le 🤡.
+ *
+ * Déclenché sur l'égalité stricte et non sur `>= 2` : à partir de la
+ * troisième, c'est le 🤡 qui prend le relais, et afficher les deux ferait
+ * doublon.
+ *
+ * L'emoji est en Unicode et non en `:warning:` — les raccourcis Discord ne
+ * sont pas interprétés dans les messages envoyés par un bot.
+ */
+function nearClownLine(match) {
+  if (match.remake || match.win || match.lossStreak !== STREAK_MIN - 1) return '';
+  return "\n**⚠️ ATTENTION T'AS LOOSE 2 FOIS DE SUITE ! UNE DE PLUS ET TU SERAS  =>🤡**";
+}
+
+/**
  * Ligne de record personnel, en sous-texte et sans mention : battre son pic
  * arrive bien plus souvent qu'une montée de rang, ça ne justifie pas de
  * notifier tout le monde.
@@ -337,7 +352,9 @@ export function buildMatchMessage({
     .setColor(match.remake ? COLOR.neutral : match.win ? COLOR.win : COLOR.loss)
     .setAuthor({ name: `${player.label} a terminé une partie`, iconURL: player.iconUrl ?? undefined, url })
     .setDescription(
-      `## ${icon}${match.champion?.name ?? match.championName} — ${issue}${lpTitre}` + recordLine(record),
+      `## ${icon}${match.champion?.name ?? match.championName} — ${issue}${lpTitre}` +
+        nearClownLine(match) +
+        recordLine(record),
     );
 
   const fields = [{ name: 'K/D/A', value: kdaText(match), inline: true }];
