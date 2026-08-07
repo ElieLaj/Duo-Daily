@@ -692,9 +692,14 @@ export function renderText(report) {
       lines.push(`${player.label} — ERREUR : ${player.error}`, '');
       continue;
     }
-    const lp = player.entry ? `${player.entry.leaguePoints} LP` : 'Non classé';
-    // Le rang n'est ajouté que s'il existe : sinon `lp` vaut déjà "Non classé"
-    // et la ligne le répéterait deux fois.
+    // Même traitement que dans les encarts : sans classement, tout ce qui
+    // suivrait se rapporte à une position sur l'échelle que le joueur n'a pas.
+    if (!player.entry && !player.rankUnknown) {
+      lines.push(`${player.label} - Non classé`, '');
+      continue;
+    }
+
+    const lp = player.entry ? `${player.entry.leaguePoints} LP` : 'Rang non archivé';
     const rang = player.entry ? ` - ${rankLabel(player.entry)}` : '';
     lines.push(
       `${player.label} - ${lp} (${deltaText(player.delta)})${rang}`,
