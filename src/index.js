@@ -1,5 +1,5 @@
 // EN PREMIER : diagnostique une version de Node incompatible avant que
-// l'import de node:sqlite n'échoue avec un message incompréhensible.
+// l'import de la couche base de données n'échoue avec un message obscur.
 import './preflight.js';
 
 import { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder } from 'discord.js';

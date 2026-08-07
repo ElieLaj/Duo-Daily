@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { DatabaseSync } from 'node:sqlite';
+import Database from 'better-sqlite3';
 
 import { config } from '../src/config.js';
 import {
@@ -79,7 +79,7 @@ test('migre le JSON puis archive les parties sans doublon', async () => {
     assert.equal((await getLpDeltas('Joueur#EUW', ['EUW1_exact'])).get('EUW1_exact'), 21);
 
     closeHistory();
-    const db = new DatabaseSync(config.historyPath, { readOnly: true });
+    const db = new Database(config.historyPath, { readonly: true });
     const row = db.prepare('SELECT * FROM matches WHERE match_id = ?').get('EUW1_lot_2');
     assert.equal(row.champion_name, 'Ahri');
     assert.equal(row.lp_delta, 24);

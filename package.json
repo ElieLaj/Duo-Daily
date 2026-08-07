@@ -13,11 +13,15 @@
     "test": "node --test"
   },
   "dependencies": {
+    "better-sqlite3": "12.11.1",
     "discord.js": "^14.16.3",
     "dotenv": "^16.4.7",
     "node-cron": "^3.0.3"
   },
   "engines": {
-    "node": ">=24"
+    "node": "20.x || 22.x || 23.x || 24.x"
+  },
+  "allowScripts": {
+    "better-sqlite3@12.11.1": true
   }
 }

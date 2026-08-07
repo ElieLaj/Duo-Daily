@@ -1,6 +1,10 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
+// better-sqlite3 plutot que node:sqlite : ce dernier n'existe pas avant Node
+// 22.5, ce qui rend le bot ininstallable sur un hebergeur bloque en Node 20.
+// L'API utilisee ici est identique (prepare/run/get/all, exec, close), le
+// portage se limite donc a cet import et a l'instanciation.
+import Database from 'better-sqlite3';
 
 import { config } from './config.js';
 import { loadStore } from './store.js';
@@ -69,7 +73,7 @@ async function openDatabase() {
   if (database) database.close();
 
   await fs.mkdir(path.dirname(config.historyPath), { recursive: true });
-  database = new DatabaseSync(config.historyPath);
+  database = new Database(config.historyPath);
   databasePath = config.historyPath;
   migrateSchema(database);
   return database;
