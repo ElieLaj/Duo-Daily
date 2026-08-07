@@ -96,6 +96,11 @@ export const config = {
   liveIntervalMin: Math.max(1, Number(str('LIVE_INTERVAL_MIN', '3')) || 3),
   // Salon dédié aux annonces de partie ; à défaut, celui du résumé.
   liveChannelId: str('LIVE_CHANNEL_ID') || str('DISCORD_CHANNEL_ID'),
+
+  // Salon des scripts d'aperçu. Volontairement sans repli sur le salon
+  // principal : mieux vaut un script qui refuse de partir qu'une salve de
+  // messages de test devant tout le serveur.
+  testChannelId: str('TEST_CHANNEL_ID'),
   // Ancienneté minimale, en jours, du pic battu pour que le record soit
   // annoncé. 0 (défaut) annonce chaque dépassement — y compris pendant une
   // montée continue, où chaque victoire bat le pic de la précédente. Un seuil

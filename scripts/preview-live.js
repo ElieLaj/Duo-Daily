@@ -63,6 +63,16 @@ const CAS = [
 ];
 
 assertConfig({ discord: true });
+// Les apercus postent dans un salon dedie : sans lui, on refuse de partir
+// plutot que de deverser des messages de test dans le salon principal.
+if (!config.testChannelId) {
+  console.error(
+    `\nTEST_CHANNEL_ID n'est pas renseigné dans .env.\n` +
+      `Indique un salon de test (clic droit sur le salon > Copier l'identifiant),\n` +
+      `sinon l'aperçu posterait devant tout le serveur.\n`,
+  );
+  process.exit(1);
+}
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 setTimeout(() => {
@@ -75,7 +85,7 @@ client.once('clientReady', async () => {
     await loadRankEmojis(client);
     await loadPromotionRoles(client);
     const links = await getPlayerLinks().catch(() => new Map());
-    const channel = await client.channels.fetch(config.channelId);
+    const channel = await client.channels.fetch(config.testChannelId);
 
     for (const [nom, announce] of CAS) {
       const match = announce.match;
