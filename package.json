@@ -10,7 +10,8 @@
     "now": "node src/index.js --now",
     "dry": "node src/index.js --dry-run",
     "preview": "node scripts/preview.js",
-    "test": "node --test"
+    "test": "node --test",
+    "preview:live": "node scripts/preview-live.js"
   },
   "dependencies": {
     "better-sqlite3": "12.11.1",
