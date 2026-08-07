@@ -279,7 +279,11 @@ const STREAK_MIN = 3;
  */
 function issueText(match, verbose = false) {
   if (match.remake) return 'Remake';
-  if (!match.win) return 'Défaite';
+
+  if (!match.win) {
+    if (!(match.lossStreak >= STREAK_MIN)) return 'Défaite';
+    return verbose ? `Défaite 🤡 ${match.lossStreak} d'affilée` : 'Défaite 🤡';
+  }
   if (!(match.streak >= STREAK_MIN)) return 'Victoire';
   return verbose ? `Victoire 🔥 ${match.streak} d'affilée` : 'Victoire 🔥';
 }

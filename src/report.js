@@ -215,12 +215,22 @@ async function fetchTodayMatches(puuid, now, limit = 10) {
  *   liste. Vaut 0 pour une fenetre journaliere : une serie commencee la veille
  *   n'est alors pas comptee, ce qui reste coherent avec l'intitule "du jour".
  */
-export function annotateStreaks(matches, seed = 0) {
+export function annotateStreaks(matches, seed = 0, lossSeed = 0) {
   let streak = seed;
+  let lossStreak = lossSeed;
   for (let i = matches.length - 1; i >= 0; i--) {
-    // Un remake ne casse pas la serie et ne la fait pas progresser.
-    if (!matches[i].remake) streak = matches[i].win ? streak + 1 : 0;
+    // Un remake ne casse aucune des deux series et n'en fait progresser aucune.
+    if (!matches[i].remake) {
+      if (matches[i].win) {
+        streak += 1;
+        lossStreak = 0;
+      } else {
+        lossStreak += 1;
+        streak = 0;
+      }
+    }
     matches[i].streak = streak;
+    matches[i].lossStreak = lossStreak;
   }
   return matches;
 }
