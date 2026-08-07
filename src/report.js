@@ -4,7 +4,14 @@ import { profileIconUrl } from './ddragon.js';
 import { ladderPoints } from './rank.js';
 import { loadStore, updateStore } from './store.js';
 import { formatDateFr, parseDateFr, startOfDay } from './time.js';
-import { getArchivedDay, getDayTotals, getLpDeltas, getPeak, recordRankSample } from './history.js';
+import {
+  getArchivedDay,
+  getDayTotals,
+  getLpDeltas,
+  getPeak,
+  getRankSamples,
+  recordRankSample,
+} from './history.js';
 
 /**
  * Compte les parties jouees depuis le dernier releve.
@@ -176,6 +183,12 @@ async function finalizeReport(report, startMs, endMs) {
     console.warn(`[bilan] agrégats indisponibles (${err.message})`);
     return null;
   });
+
+  // Trajectoire de chaque joueur sur la periode. Lecture locale, donc aucun
+  // appel Riot supplementaire.
+  for (const player of report.players) {
+    player.samples = await getRankSamples(player.key, startMs, endMs).catch(() => []);
+  }
   return report;
 }
 
@@ -310,8 +323,9 @@ export async function buildPlayerDetail(input, dateInput = null) {
 
   // Le pic ne remonte qu'au debut du suivi, sauf declaration manuelle.
   const peak = await getPeak(player.key).catch(() => null);
+  const samples = await getRankSamples(player.key, startOfDay(now, config.timezone), now.getTime()).catch(() => []);
 
-  return { ...detail, matches: annotateStreaks(matches), truncated, peak };
+  return { ...detail, matches: annotateStreaks(matches), truncated, peak, samples };
 }
 
 /**

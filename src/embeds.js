@@ -88,12 +88,25 @@ function describeClean(lp, delta, rank, emoji, note, peak = '') {
  * le delta de LP porte sa propre fenêtre, qui est différente.
  */
 function playerEmbed(player, url, options = {}) {
-  const { stats, deltaNote, gamesLabel = 'Nombre de games' } = options;
+  // `withTrajectory:false` pour le détail d'un joueur, qui place lui-même la
+  // courbe après la liste des parties dont elle est la synthèse.
+  const { stats, deltaNote, gamesLabel = 'Nombre de games', withTrajectory = true } = options;
   if (player.error) {
     return new EmbedBuilder()
       .setColor(COLOR.error)
       .setAuthor({ name: player.label, url })
       .setDescription(`⚠️ ${player.error}`);
+  }
+
+  // Joueur sans classement : tout ce qui suit se rapporte à une position sur
+  // l'échelle, qu'il n'a pas. Afficher « première mesure » serait faux — il a
+  // bien été mesuré — et les compteurs de la file classée sont vides. On s'en
+  // tient donc au pseudo et au constat.
+  if (!player.entry && !player.rankUnknown) {
+    return new EmbedBuilder()
+      .setColor(tierColor(null))
+      .setAuthor({ name: player.label, iconURL: player.iconUrl ?? undefined, url })
+      .setDescription('## Non classé');
   }
 
   const lp = player.entry
@@ -145,6 +158,11 @@ function playerEmbed(player, url, options = {}) {
   // rangée, un quatrième partirait seul à la ligne.
   const wr = total > 0 ? ` (${Math.round((wins / total) * 100)} %)` : '';
   fields.push({ name: 'Bilan', value: `${wins} V — ${losses} D${wr}`, inline: true });
+
+  // Trajectoire du jour, en bas de l'encart : elle raconte le chemin, là où le
+  // delta ne donne que le point d'arrivée.
+  const trajectoire = withTrajectory ? trajectoryLine(player.samples) : '';
+  if (trajectoire) fields.push({ name: 'Trajectoire', value: trajectoire, inline: false });
 
   embed.addFields(fields);
   return embed;
@@ -206,6 +224,8 @@ export function buildPlayerDetailMessage(detail) {
   const embed = playerEmbed(detail, url, {
     stats: jour,
     gamesLabel: partiesLabel,
+    // La courbe est placée plus bas, après le détail des parties.
+    withTrajectory: false,
     // Le delta de LP, lui, se rapporte bien à la fenêtre de comparaison : on le
     // dit explicitement plutôt que de laisser croire qu'il couvre la journée.
     deltaNote: detail.historical
@@ -255,6 +275,11 @@ export function buildPlayerDetailMessage(detail) {
         : '*Aucune partie classée aujourd’hui.*',
     });
   }
+
+  // La trajectoire vient après le détail des parties : elle en est la
+  // synthèse, on la lit une fois les parties parcourues.
+  const trajectoire = trajectoryLine(detail.samples);
+  if (trajectoire) embed.addFields({ name: 'Trajectoire du jour', value: trajectoire });
 
   // Pas de champ « Pic » ici : il est déjà rendu en sous-texte sous la
   // variation de LP par playerEmbed, discrètement, comme demandé.
@@ -458,6 +483,51 @@ export function buildMatchMessage({
   return message;
 }
 
+// Blocs Unicode du plus bas au plus haut. Rendus dans un bloc de code pour que
+// Discord les affiche en chasse fixe : sinon les caractères n'ont pas la même
+// largeur et la courbe se déforme.
+const SPARK_BLOCKS = '▁▂▃▄▅▆▇█';
+
+/**
+ * Courbe compacte d'une série de valeurs.
+ *
+ * @param {number[]} values du plus ancien au plus récent.
+ * @returns {string} vide si moins de deux points — une courbe à un seul point
+ *   ne dit rien, autant ne rien afficher.
+ */
+export function sparkline(values) {
+  const points = values.filter(Number.isFinite);
+  if (points.length < 2) return '';
+
+  const min = Math.min(...points);
+  const max = Math.max(...points);
+  // Série plate : tout au même niveau plutôt qu'une division par zéro.
+  if (max === min) return SPARK_BLOCKS[3].repeat(points.length);
+
+  return points
+    .map((v) => {
+      const rang = Math.round(((v - min) / (max - min)) * (SPARK_BLOCKS.length - 1));
+      return SPARK_BLOCKS[rang];
+    })
+    .join('');
+}
+
+/**
+ * Ligne de trajectoire : la courbe, encadrée par les LP de début et de fin.
+ * Les bornes donnent l'échelle, que la courbe seule ne porte pas.
+ */
+function trajectoryLine(samples) {
+  if (!samples || samples.length < 2) return '';
+  const courbe = sparkline(samples.map((s) => s.ladder));
+  if (!courbe) return '';
+
+  const premier = samples[0];
+  const dernier = samples[samples.length - 1];
+  const ecart = dernier.ladder - premier.ladder;
+  const signe = ecart > 0 ? `+${ecart}` : `${ecart}`;
+  return `\`${courbe}\` ${premier.league_points} → ${dernier.league_points} LP *(${ecart === 0 ? '±0' : signe})*`;
+}
+
 /** "3 h 42" / "48 min" */
 function dureeLongue(seconds) {
   if (!Number.isFinite(seconds) || seconds <= 0) return null;
@@ -534,6 +604,14 @@ function summaryEmbed(report) {
   if (totals?.plusDeMorts) {
     const s = totals.plusDeMorts;
     fields.push({ name: '💀 Plus de morts', value: `**${s.label}** — ${s.deaths}`, inline: true });
+  }
+  if (totals?.pirePartie) {
+    const p = totals.pirePartie;
+    fields.push({
+      name: '💩 Pire partie',
+      value: `**${p.label}** — ${p.championName ?? '?'} ${p.kills}/${p.deaths}/${p.assists} *(${p.win ? 'et gagnée quand même' : 'défaite'})*`,
+      inline: true,
+    });
   }
 
   if (totals?.games) {

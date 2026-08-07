@@ -479,6 +479,20 @@ export async function setHistoryMarker(key, value = {}) {
 }
 
 /**
+ * Positions successives d'un joueur sur une periode, de la plus ancienne a la
+ * plus recente. Sert a tracer sa trajectoire.
+ */
+export async function getRankSamples(playerKey, startMs, endMs) {
+  const db = await openDatabase();
+  return db.prepare(`
+    SELECT ladder, tier, rank, league_points, sampled_at
+    FROM rank_samples
+    WHERE player_key = ? AND queue_id = ? AND sampled_at >= ? AND sampled_at < ?
+    ORDER BY sampled_at ASC
+  `).all(playerKey, config.queueId, startMs, endMs);
+}
+
+/**
  * Agregats de la journee, tous joueurs confondus.
  *
  * Calcules sur les parties archivees, donc sur ce que le bot a reellement
@@ -487,7 +501,7 @@ export async function setHistoryMarker(key, value = {}) {
 export async function getDayTotals(startMs, endMs) {
   const db = await openDatabase();
   const rows = db.prepare(`
-    SELECT player_key, player_label, win, remake, duration_sec, kills, deaths, assists
+    SELECT player_key, player_label, win, remake, duration_sec, kills, deaths, assists, champion_name
     FROM matches
     WHERE queue_id = ? AND ended_at >= ? AND ended_at < ?
     ORDER BY player_key, ended_at ASC
@@ -495,6 +509,7 @@ export async function getDayTotals(startMs, endMs) {
 
   let games = 0;
   let seconds = 0;
+  let pire = null;
   const parJoueur = new Map();
 
   for (const row of rows) {
@@ -520,6 +535,24 @@ export async function getDayTotals(startMs, endMs) {
     stats.kills += row.kills ?? 0;
     stats.deaths += row.deaths ?? 0;
     stats.assists += row.assists ?? 0;
+
+    // Pire partie de la journee, au KDA. Les morts departagent les ex aequo :
+    // deux parties a 0 de KDA ne se valent pas si l'une compte 12 morts.
+    if (Number.isFinite(row.deaths)) {
+      const kda = ((row.kills ?? 0) + (row.assists ?? 0)) / Math.max(1, row.deaths);
+      if (!pire || kda < pire.kda || (kda === pire.kda && row.deaths > pire.deaths)) {
+        pire = {
+          key: row.player_key,
+          label: row.player_label,
+          championName: row.champion_name,
+          kills: row.kills ?? 0,
+          deaths: row.deaths,
+          assists: row.assists ?? 0,
+          win: Boolean(row.win),
+          kda,
+        };
+      }
+    }
     if (row.win) {
       stats.wins++;
       stats.currentWin++;
@@ -562,6 +595,7 @@ export async function getDayTotals(startMs, endMs) {
     plusDeParties: top((a, b) => (b.games > a.games ? b : a)),
     meilleurKda: top((a, b) => (b.kda > a.kda ? b : a)),
     plusDeMorts: top((a, b) => (b.deaths > a.deaths ? b : a)),
+    pirePartie: pire,
   };
 }
 
