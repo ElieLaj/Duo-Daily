@@ -300,7 +300,7 @@ function issueText(match, verbose = false) {
  */
 function nearClownLine(match) {
   if (match.remake || match.win || match.lossStreak !== STREAK_MIN - 1) return '';
-  return "\n**⚠️ ATTENTION T'AS LOOSE 2 FOIS DE SUITE ! UNE DE PLUS ET TU SERAS  =>🤡**";
+  return "**⚠️ ATTENTION T'AS LOOSE 2 FOIS DE SUITE ! UNE DE PLUS ET TU SERAS  =>🤡**";
 }
 
 /**
@@ -352,9 +352,7 @@ export function buildMatchMessage({
     .setColor(match.remake ? COLOR.neutral : match.win ? COLOR.win : COLOR.loss)
     .setAuthor({ name: `${player.label} a terminé une partie`, iconURL: player.iconUrl ?? undefined, url })
     .setDescription(
-      `## ${icon}${match.champion?.name ?? match.championName} — ${issue}${lpTitre}` +
-        nearClownLine(match) +
-        recordLine(record),
+      `## ${icon}${match.champion?.name ?? match.championName} — ${issue}${lpTitre}` + recordLine(record),
     );
 
   const fields = [{ name: 'K/D/A', value: kdaText(match), inline: true }];
@@ -400,17 +398,27 @@ export function buildMatchMessage({
 
   const message = { embeds: [embed] };
 
+  // Le contenu s'affiche AU-DESSUS de l'encart : c'est là que vont les lignes
+  // qui doivent sauter aux yeux.
+  const entete = [];
+
+  const nargue = nearClownLine(match);
+  if (nargue) entete.push(nargue);
+
   if (promotion) {
     embed.setColor(COLOR.promotion);
     // La mention DOIT être dans le contenu : une mention placée dans un embed
     // s'affiche mais ne déclenche aucune notification.
     const ping = roleIds.map((id) => `<@&${id}> `).join('');
-    message.content =
-      `${ping}🎉 **${player.label}** passe **${promotion.vers}** ! ` +
-      `*(depuis ${promotion.depuis})*`;
-    // Liste blanche explicite : le message ne peut mentionner que ces rôles,
-    // jamais @everyone ni un membre dont le pseudo ressemblerait à une mention.
-    message.allowedMentions = { roles: roleIds, parse: [] };
+    entete.push(`${ping}🎉 **${player.label}** passe **${promotion.vers}** ! *(depuis ${promotion.depuis})*`);
+  }
+
+  if (entete.length) {
+    message.content = entete.join('\n');
+    // Liste blanche explicite : le message ne peut mentionner que les rôles de
+    // promotion, jamais @everyone ni un membre dont le pseudo ressemblerait à
+    // une mention. `parse: []` neutralise tout le reste.
+    message.allowedMentions = { roles: promotion ? roleIds : [], parse: [] };
   }
 
   return message;
