@@ -37,6 +37,29 @@ import {
 const args = new Set(process.argv.slice(2));
 const DRY_RUN = args.has('--dry-run');
 const RUN_NOW = args.has('--now');
+const TEST_MODE = args.has('--test');
+
+// Mode test : le bot tourne normalement mais sur un serveur et un salon
+// dedies. Les commandes sont enregistrees ailleurs, donc essayer une
+// modification en local ne remplace pas celles du serveur reel, et les
+// annonces ne partent pas devant tout le monde.
+if (TEST_MODE) {
+  if (!config.testChannelId) {
+    console.error(
+      `
+TEST_CHANNEL_ID n'est pas renseigné dans .env.
+` +
+        `Le mode test a besoin d'un salon dédié pour ne pas poster ailleurs.
+`,
+    );
+    process.exit(1);
+  }
+  config.channelId = config.testChannelId;
+  config.liveChannelId = config.testChannelId;
+  // Sans serveur de test, les commandes partent en global : elles n'ecrasent
+  // alors pas celles enregistrees sur le serveur reel.
+  config.guildId = config.testGuildId;
+}
 
 // Paliers proposés par /pic. La valeur est le tier tel que Riot le nomme, le
 // libellé reste en français comme le reste de l'interface.
@@ -329,6 +352,12 @@ async function main() {
 
   client.once('clientReady', async () => {
     log(`Connecté en tant que ${client.user.tag}`);
+    if (TEST_MODE) {
+      log(
+        `MODE TEST — salon ${config.channelId}, commandes ` +
+          (config.guildId ? `sur le serveur ${config.guildId}` : 'en global'),
+      );
+    }
 
     try {
       if (RUN_NOW) {

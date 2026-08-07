@@ -42,10 +42,12 @@ let byTier = new Map();
 export async function loadRankEmojis(client) {
   const found = new Map();
   try {
-    // On prefere le serveur du salon cible : GUILD_ID n'est qu'un raccourci
-    // facultatif pour l'enregistrement des commandes.
-    const channel = await client.channels.fetch(config.channelId);
-    const guild = channel?.guild ?? (config.guildId ? await client.guilds.fetch(config.guildId) : null);
+    // Les emojis sont lus depuis le serveur de production, meme quand le bot
+    // poste ailleurs : le mode test doit rendre comme le rendu reel, et un
+    // emoji custom reste utilisable hors de son serveur d'origine.
+    const guild = config.emojiGuildId
+      ? await client.guilds.fetch(config.emojiGuildId).catch(() => null)
+      : (await client.channels.fetch(config.channelId).catch(() => null))?.guild;
     if (!guild) return byTier;
 
     for (const emoji of (await guild.emojis.fetch()).values()) {

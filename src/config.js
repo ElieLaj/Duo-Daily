@@ -101,6 +101,14 @@ export const config = {
   // principal : mieux vaut un script qui refuse de partir qu'une salve de
   // messages de test devant tout le serveur.
   testChannelId: str('TEST_CHANNEL_ID'),
+  // Serveur où le mode test enregistre ses commandes, pour ne pas remplacer
+  // celles du serveur réel pendant qu'on essaie une modification.
+  testGuildId: str('TEST_GUILD_ID'),
+
+  // Serveur d'où sont lus les emojis de rang. Reste le serveur de production
+  // même en mode test : le bot peut les utiliser ailleurs, et un aperçu sans
+  // emoji ne représenterait pas le rendu réel.
+  emojiGuildId: str('DISCORD_GUILD_ID'),
   // Ancienneté minimale, en jours, du pic battu pour que le record soit
   // annoncé. 0 (défaut) annonce chaque dépassement — y compris pendant une
   // montée continue, où chaque victoire bat le pic de la précédente. Un seuil
