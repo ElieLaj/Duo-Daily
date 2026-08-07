@@ -160,18 +160,41 @@ async function archivedPlayer(player, period, withMatches = false) {
   return withMatches ? { ...base, matches: annotateStreaks(archived.matches) } : base;
 }
 
+/**
+ * Traitement commun aux deux formes de resume : classement des joueurs et
+ * agregats de la periode.
+ *
+ * Factorise volontairement : la version historique avait ete ecrite sans, et
+ * son bilan se retrouvait ampute de tout ce qui vient des parties archivees.
+ */
+async function finalizeReport(report, startMs, endMs) {
+  // Classement par position sur l'echelle : le resume se lit alors comme un
+  // classement, les non-classes fermant la marche.
+  report.players.sort((a, b) => (ladderPoints(b.entry) ?? -1) - (ladderPoints(a.entry) ?? -1));
+
+  report.totals = await getDayTotals(startMs, endMs).catch((err) => {
+    console.warn(`[bilan] agrégats indisponibles (${err.message})`);
+    return null;
+  });
+  return report;
+}
+
 export async function buildReport(dateInput = null) {
   if (dateInput) {
     const period = selectedPeriod(dateInput);
     const players = [];
     for (const player of config.players) players.push(await archivedPlayer(player, period));
-    return {
-      at: new Date(period.end - 1),
-      dateLabel: period.label,
-      comparedTo: null,
-      historical: true,
-      players,
-    };
+    return finalizeReport(
+      {
+        at: new Date(period.end - 1),
+        dateLabel: period.label,
+        comparedTo: null,
+        historical: true,
+        players,
+      },
+      period.start,
+      period.end,
+    );
   }
 
   const store = await loadStore();
@@ -184,23 +207,16 @@ export async function buildReport(dateInput = null) {
 
   const comparedTo = players.find((p) => p.previous?.takenAt)?.previous?.takenAt ?? store.lastReportAt;
 
-  // Classement par position sur l'echelle : le resume se lit alors comme un
-  // classement, les non-classes fermant la marche.
-  players.sort((a, b) => (ladderPoints(b.entry) ?? -1) - (ladderPoints(a.entry) ?? -1));
-
-  const debut = startOfDay(now, config.timezone);
-  const totals = await getDayTotals(debut, now.getTime()).catch((err) => {
-    console.warn(`[bilan] agrégats du jour indisponibles (${err.message})`);
-    return null;
-  });
-
-  return {
-    at: now,
-    dateLabel: formatDateFr(now, config.timezone),
-    comparedTo: comparedTo ? new Date(comparedTo) : null,
-    players,
-    totals,
-  };
+  return finalizeReport(
+    {
+      at: now,
+      dateLabel: formatDateFr(now, config.timezone),
+      comparedTo: comparedTo ? new Date(comparedTo) : null,
+      players,
+    },
+    startOfDay(now, config.timezone),
+    now.getTime(),
+  );
 }
 
 /**
