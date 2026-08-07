@@ -184,10 +184,13 @@ async function finalizeReport(report, startMs, endMs) {
     return null;
   });
 
-  // Trajectoire de chaque joueur sur la periode. Lecture locale, donc aucun
-  // appel Riot supplementaire.
+  // Trajectoire de chaque joueur. La fenetre est celle du delta affiche juste
+  // au-dessus, et non la journee : sinon la courbe pourrait descendre pendant
+  // que l'en-tete annonce un gain, les deux mesurant des periodes differentes.
+  // Lecture locale, donc aucun appel Riot supplementaire.
+  const debutCourbe = report.comparedTo ? report.comparedTo.getTime() : startMs;
   for (const player of report.players) {
-    player.samples = await getRankSamples(player.key, startMs, endMs).catch(() => []);
+    player.samples = await getRankSamples(player.key, debutCourbe, endMs).catch(() => []);
   }
   return report;
 }

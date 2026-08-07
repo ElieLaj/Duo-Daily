@@ -513,19 +513,29 @@ export function sparkline(values) {
 }
 
 /**
- * Ligne de trajectoire : la courbe, encadrée par les LP de début et de fin.
- * Les bornes donnent l'échelle, que la courbe seule ne porte pas.
+ * Ligne de trajectoire : la courbe, encadrée par les rangs de début et de fin.
+ *
+ * Les bornes portent le rang complet et non les LP bruts. Ces derniers
+ * repartent à zéro à chaque division : « 0 → 25 LP » décrit aussi bien une
+ * montée qu'une descente d'Émeraude IV vers Platine I, alors que l'écart, lui,
+ * est calculé sur la position absolue. Afficher les deux ensemble se
+ * contredisait.
  */
 function trajectoryLine(samples) {
   if (!samples || samples.length < 2) return '';
   const courbe = sparkline(samples.map((s) => s.ladder));
   if (!courbe) return '';
 
+  const borne = (s) => {
+    const rang = rankLabel({ tier: s.tier, rank: s.rank });
+    return `${rang} ${s.league_points ?? 0} LP`;
+  };
+
   const premier = samples[0];
   const dernier = samples[samples.length - 1];
   const ecart = dernier.ladder - premier.ladder;
-  const signe = ecart > 0 ? `+${ecart}` : `${ecart}`;
-  return `\`${courbe}\` ${premier.league_points} → ${dernier.league_points} LP *(${ecart === 0 ? '±0' : signe})*`;
+  const signe = ecart === 0 ? '±0' : ecart > 0 ? `+${ecart}` : `${ecart}`;
+  return `\`${courbe}\`\n-# ${borne(premier)} → ${borne(dernier)} *(${signe} LP)*`;
 }
 
 /** "3 h 42" / "48 min" */

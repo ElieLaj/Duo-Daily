@@ -487,7 +487,12 @@ export async function getRankSamples(playerKey, startMs, endMs) {
   return db.prepare(`
     SELECT ladder, tier, rank, league_points, sampled_at
     FROM rank_samples
-    WHERE player_key = ? AND queue_id = ? AND sampled_at >= ? AND sampled_at < ?
+    WHERE player_key = ? AND queue_id = ?
+      AND sampled_at >= ? AND sampled_at < ?
+      -- Les pics declares via /pic portent l'horodatage de la declaration, pas
+      -- celui du rang atteint : les inclure planterait un sommet fictif dans la
+      -- courbe du jour ou la declaration a ete faite.
+      AND source = 'auto'
     ORDER BY sampled_at ASC
   `).all(playerKey, config.queueId, startMs, endMs);
 }
