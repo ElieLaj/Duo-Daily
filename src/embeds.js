@@ -4,6 +4,7 @@ import { emblemUrl, ladderPoints, rankLabel, tierColor } from './rank.js';
 import { rankEmoji } from './emojis.js';
 import { opggUrl } from './links.js';
 import { formatDateFr, formatDateTimeFr } from './time.js';
+import { GIF_STREAK_MIN, randomDefeatGif } from './gifs.js';
 
 const COLOR = { error: 0xb91c1c, win: 0x22c55e, loss: 0xef4444, neutral: 0x94a3b8, promotion: 0xf59e0b };
 
@@ -649,6 +650,27 @@ function summaryEmbed(report) {
   embed.addFields(fields);
   embed.setFooter({ text: 'Parties et temps comptés sur ce que le bot a observé' });
   return embed;
+}
+
+/**
+ * Message de moquerie envoyé à part, à partir de quatre défaites d'affilée.
+ *
+ * Séparé de l'annonce parce que Discord ne génère l'aperçu d'un lien que
+ * depuis le contenu d'un message, jamais depuis un encart — et ce sont des
+ * pages Tenor/Klipy, pas des images directes.
+ *
+ * @returns {object|null} le message à envoyer, ou null si le seuil n'est pas
+ *   atteint.
+ */
+export function buildDefeatGifMessage(player, match, links = new Map()) {
+  if (match.remake || match.win || !(match.lossStreak >= GIF_STREAK_MIN)) return null;
+
+  const qui = nameOf(player.key, player.label, links);
+  const cites = links.has(player.key) ? [links.get(player.key)] : [];
+  return {
+    content: `${qui} ${match.lossStreak} défaites d'affilée…\n${randomDefeatGif()}`,
+    allowedMentions: { users: cites, roles: [], parse: [] },
+  };
 }
 
 // Discord refuse un message de plus de 10 encarts : au-delà, le résumé doit
