@@ -328,12 +328,22 @@ function durationText(seconds) {
  * Annonce d'une partie qui vient de se terminer (surveillance périodique).
  * `match.emoji` et `match.champion` sont résolus en amont, comme pour /joueur.
  */
+/**
+ * Désignation d'un joueur dans le contenu d'un message : mention Discord si
+ * le compte a été lié via /link, sinon son Riot ID en gras.
+ */
+function nameOf(key, label, links) {
+  const id = links.get(key);
+  return id ? `<@${id}>` : `**${label}**`;
+}
+
 /** Une ligne par joueur suivi dépassé ou repassé pendant la partie. */
-function crossingLines(player, croisements) {
+function crossingLines(player, croisements, links) {
+  const moi = nameOf(player.key, player.label, links);
   return croisements.map((c) =>
     c.sens === 'devant'
-      ? `📈 **${player.label}** passe devant **${c.label}** !`
-      : `📉 **${player.label}** repasse derrière **${c.label}** !`,
+      ? `📈 ${moi} passe devant ${nameOf(c.key, c.label, links)} !`
+      : `📉 ${moi} repasse derrière ${nameOf(c.key, c.label, links)} !`,
   );
 }
 
@@ -346,6 +356,7 @@ export function buildMatchMessage({
   promotion,
   record,
   croisements = [],
+  links = new Map(),
   roleIds = [],
   skipped,
 }) {
@@ -412,25 +423,30 @@ export function buildMatchMessage({
   // qui doivent sauter aux yeux.
   const entete = [];
 
-  const nargue = nearClownLine(match);
-  if (nargue) entete.push(nargue);
+  const moi = nameOf(player.key, player.label, links);
 
-  entete.push(...crossingLines(player, croisements));
+  const nargue = nearClownLine(match);
+  // Le joueur est interpellé nommément quand son compte est lié : sans ça,
+  // « t'as loosé deux fois » ne s'adresse visiblement à personne.
+  if (nargue) entete.push(links.has(player.key) ? `${moi} ${nargue}` : nargue);
+
+  entete.push(...crossingLines(player, croisements, links));
 
   if (promotion) {
     embed.setColor(COLOR.promotion);
     // La mention DOIT être dans le contenu : une mention placée dans un embed
     // s'affiche mais ne déclenche aucune notification.
     const ping = roleIds.map((id) => `<@&${id}> `).join('');
-    entete.push(`${ping}🎉 **${player.label}** passe **${promotion.vers}** ! *(depuis ${promotion.depuis})*`);
+    entete.push(`${ping}🎉 ${moi} passe **${promotion.vers}** ! *(depuis ${promotion.depuis})*`);
   }
 
   if (entete.length) {
     message.content = entete.join('\n');
-    // Liste blanche explicite : le message ne peut mentionner que les rôles de
-    // promotion, jamais @everyone ni un membre dont le pseudo ressemblerait à
-    // une mention. `parse: []` neutralise tout le reste.
-    message.allowedMentions = { roles: promotion ? roleIds : [], parse: [] };
+    // Liste blanche explicite : seuls les rôles de promotion et les membres
+    // effectivement cités peuvent être mentionnés, jamais @everyone ni un
+    // membre dont le pseudo ressemblerait à une mention.
+    const cites = [...message.content.matchAll(/<@(\d+)>/g)].map((m) => m[1]);
+    message.allowedMentions = { roles: promotion ? roleIds : [], users: [...new Set(cites)], parse: [] };
   }
 
   return message;

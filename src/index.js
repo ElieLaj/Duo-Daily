@@ -17,7 +17,16 @@ import { loadPromotionRoles, promotionRoleIds } from './roles.js';
 import { APEX_TIERS, ladderPoints, rankLabel } from './rank.js';
 import { loadStore } from './store.js';
 import { lastScheduledOccurrence } from './time.js';
-import { closeHistory, getPeak, initializeHistory, listArchivedDates, recordRankSample } from './history.js';
+import {
+  closeHistory,
+  getPeak,
+  getPlayerLinks,
+  initializeHistory,
+  listArchivedDates,
+  recordRankSample,
+  removePlayerLink,
+  setPlayerLink,
+} from './history.js';
 
 const args = new Set(process.argv.slice(2));
 const DRY_RUN = args.has('--dry-run');
@@ -67,6 +76,16 @@ const COMMANDS = [
         .setName('date')
         .setDescription('Journée au format JJ-MM-AAAA (vide = aujourd’hui en temps réel)')
         .setAutocomplete(true),
+    )
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName('link')
+    .setDescription('Lie un joueur suivi à un membre du serveur, pour qu’il soit mentionné')
+    .addStringOption((option) =>
+      option.setName('joueur').setDescription('Joueur suivi').setRequired(true).setAutocomplete(true),
+    )
+    .addUserOption((option) =>
+      option.setName('membre').setDescription('Membre à lier — laisser vide pour délier'),
     )
     .toJSON(),
   new SlashCommandBuilder()
@@ -169,9 +188,12 @@ async function runLiveCheck(client) {
     }
 
     await loadRankEmojis(client);
+    // Relues a chaque lot : une liaison posee entre deux passages doit prendre
+    // effet sans redemarrage.
+    const links = await getPlayerLinks().catch(() => new Map());
     for (const announce of announces) {
       await decorateMatch(client, announce.match);
-      await channel.send(buildMatchMessage({ ...announce, roleIds: promotionRoleIds() }));
+      await channel.send(buildMatchMessage({ ...announce, links, roleIds: promotionRoleIds() }));
       if (announce.promotion) {
         log(`Montée de rang : ${announce.player.label} → ${announce.promotion.vers}`);
       }
@@ -183,6 +205,42 @@ async function runLiveCheck(client) {
   } finally {
     liveRunning = false;
   }
+}
+
+/**
+ * /link : associe un joueur suivi a un membre du serveur.
+ *
+ * Ouverte a tout le monde, comme demande. Sans membre, la liaison est retiree.
+ */
+async function handleLinkCommand(interaction) {
+  const playerKey = interaction.options.getString('joueur');
+  const player = config.players.find((p) => p.key === playerKey);
+  if (!player) {
+    await interaction.reply({
+      content: `⚠️ « ${playerKey} » n'est pas un joueur suivi. Choisis-en un dans la liste proposée.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const membre = interaction.options.getUser('membre');
+  if (!membre) {
+    const existait = await removePlayerLink(player.key);
+    await interaction.reply(
+      existait
+        ? `**${player.label}** n'est plus lié à personne.`
+        : `**${player.label}** n'était lié à personne.`,
+    );
+    return;
+  }
+
+  await setPlayerLink(player.key, membre.id, interaction.user.id);
+  // La reponse ne mentionne personne : confirmer une liaison ne justifie pas
+  // de notifier le membre concerne.
+  await interaction.reply({
+    content: `**${player.label}** est désormais lié à <@${membre.id}>, qui sera mentionné dans les annonces.`,
+    allowedMentions: { parse: [] },
+  });
 }
 
 /**
@@ -354,10 +412,15 @@ async function main() {
 
     if (!interaction.isChatInputCommand()) return;
     const { commandName } = interaction;
-    if (!['resume', 'joueur', 'pic'].includes(commandName)) return;
+    if (!['resume', 'joueur', 'pic', 'link'].includes(commandName)) return;
 
     if (commandName === 'pic') {
       await handlePeakCommand(interaction);
+      return;
+    }
+
+    if (commandName === 'link') {
+      await handleLinkCommand(interaction);
       return;
     }
 

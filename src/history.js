@@ -74,6 +74,15 @@ function migrateSchema(db) {
       ON rank_samples (player_key, queue_id, ladder DESC);
     CREATE INDEX IF NOT EXISTS rank_samples_time
       ON rank_samples (player_key, queue_id, sampled_at DESC);
+
+    -- Correspondance compte Riot -> membre Discord, pour pouvoir mentionner
+    -- reellement le joueur concerne dans les annonces.
+    CREATE TABLE IF NOT EXISTS player_links (
+      player_key TEXT PRIMARY KEY,
+      discord_id TEXT NOT NULL,
+      linked_by TEXT,
+      linked_at INTEGER NOT NULL
+    );
   `);
 
   // Migration additive pour une base creee avant le stockage explicite de la
@@ -467,6 +476,33 @@ export async function setHistoryMarker(key, value = {}) {
     INSERT INTO metadata (key, value) VALUES (?, ?)
     ON CONFLICT (key) DO UPDATE SET value = excluded.value
   `).run(key, JSON.stringify(value));
+}
+
+/** Associe un joueur suivi a un membre Discord. Remplace une liaison existante. */
+export async function setPlayerLink(playerKey, discordId, linkedBy = null) {
+  const db = await openDatabase();
+  db.prepare(`
+    INSERT INTO player_links (player_key, discord_id, linked_by, linked_at)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT (player_key) DO UPDATE SET
+      discord_id = excluded.discord_id,
+      linked_by = excluded.linked_by,
+      linked_at = excluded.linked_at
+  `).run(playerKey, discordId, linkedBy, Date.now());
+}
+
+/** @returns {Promise<boolean>} true si une liaison existait. */
+export async function removePlayerLink(playerKey) {
+  const db = await openDatabase();
+  return Number(db.prepare('DELETE FROM player_links WHERE player_key = ?').run(playerKey).changes) > 0;
+}
+
+/** @returns {Promise<Map<string,string>>} cle joueur -> identifiant Discord. */
+export async function getPlayerLinks() {
+  const db = await openDatabase();
+  return new Map(
+    db.prepare('SELECT player_key, discord_id FROM player_links').all().map((r) => [r.player_key, r.discord_id]),
+  );
 }
 
 export function closeHistory() {

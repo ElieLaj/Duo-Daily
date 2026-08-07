@@ -117,8 +117,12 @@ async function pollPlayer(player, store) {
       if (autre.key === player.key) continue;
       const sien = store.live?.[autre.key]?.ladder ?? store.players?.[autre.key]?.ladder;
       if (!Number.isFinite(sien)) continue;
-      if (previous.ladder < sien && ladder > sien) croisements.push({ label: autre.label, sens: 'devant' });
-      else if (previous.ladder > sien && ladder < sien) croisements.push({ label: autre.label, sens: 'derriere' });
+      // La cle est conservee : elle permet de mentionner le membre Discord lie.
+      if (previous.ladder < sien && ladder > sien) {
+        croisements.push({ key: autre.key, label: autre.label, sens: 'devant' });
+      } else if (previous.ladder > sien && ladder < sien) {
+        croisements.push({ key: autre.key, label: autre.label, sens: 'derriere' });
+      }
     }
   }
 
