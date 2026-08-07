@@ -135,11 +135,22 @@ async function pollPlayer(player, store) {
   // La serie est cumulee dans l'etat persiste plutot que recalculee : elle
   // traverse ainsi les jours et les redemarrages, sans relire l'historique.
   let streak = previous?.streak ?? 0;
+  let lossStreak = previous?.lossStreak ?? 0;
   for (const match of matches) {
-    if (!match.remake) streak = match.win ? streak + 1 : 0;
+    if (!match.remake) {
+      if (match.win) {
+        streak += 1;
+        lossStreak = 0;
+      } else {
+        lossStreak += 1;
+        streak = 0;
+      }
+    }
     match.streak = streak;
+    match.lossStreak = lossStreak;
   }
   state.streak = streak;
+  state.lossStreak = lossStreak;
 
   const records = matches.map((match, index) => ({
     player,
