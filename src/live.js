@@ -155,6 +155,22 @@ async function pollPlayer(player, store) {
   }
   if (!matches.length) return { announces: [], state };
 
+  // Duos entre joueurs suivis. Les puuid des autres viennent de leur etat
+  // live : aucun appel supplementaire, la liste des coequipiers etant deja
+  // dans le detail de la partie.
+  const parPuuid = new Map();
+  for (const autre of config.players) {
+    if (autre.key === player.key) continue;
+    const sien = store.live?.[autre.key]?.puuid ?? store.players?.[autre.key]?.puuid;
+    if (sien) parPuuid.set(sien, autre);
+  }
+  for (const match of matches) {
+    match.duo = (match.allies ?? [])
+      .map((p) => parPuuid.get(p))
+      .filter(Boolean)
+      .map((autre) => ({ key: autre.key, label: autre.label }));
+  }
+
   // La serie est cumulee dans l'etat persiste plutot que recalculee : elle
   // traverse ainsi les jours et les redemarrages, sans relire l'historique.
   let streak = previous?.streak ?? 0;
