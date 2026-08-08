@@ -249,7 +249,15 @@ export function buildPlayerDetailMessage(detail) {
     const lp = Number.isFinite(match.lpDelta) ? ` ${deltaText(match.lpDelta)}` : '';
     const issue = `${pastille} ${issueText(match)}${lp}`;
     const icon = match.emoji ? `${match.emoji} ` : '';
-    const parts = [`**${match.champion?.name ?? match.championName}**`, kdaText(match), farmText(match), issue];
+    // 👥 signale une partie jouée avec un autre joueur suivi. Marqueur seul :
+    // nommer le partenaire allongerait chaque ligne d'une liste déjà dense.
+    const duo = match.duo?.length ? ' 👥' : '';
+    const parts = [
+      `**${match.champion?.name ?? match.championName}**${duo}`,
+      kdaText(match),
+      farmText(match),
+      issue,
+    ];
     return icon + parts.filter(Boolean).join(' — ');
   });
 

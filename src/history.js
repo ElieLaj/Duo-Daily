@@ -403,6 +403,8 @@ function matchFromRow(row) {
     win: row.win == null ? null : Boolean(row.win),
     remake: row.remake == null ? null : Boolean(row.remake),
     lpDelta: row.lp_delta_games === 1 ? row.lp_delta ?? undefined : undefined,
+    // Les libelles sont resolus a l'affichage : seules les cles sont stockees.
+    duo: (row.duo_with ?? '').split(',').filter(Boolean).map((key) => ({ key, label: key.replace('#', ' #') })),
   };
 }
 
