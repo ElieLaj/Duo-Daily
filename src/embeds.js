@@ -668,7 +668,12 @@ export function buildDefeatGifMessage(player, match, links = new Map()) {
   const qui = nameOf(player.key, player.label, links);
   const cites = links.has(player.key) ? [links.get(player.key)] : [];
   return {
-    content: `${qui} ${match.lossStreak} défaites d'affilée…\n${randomDefeatGif()}`,
+    content: `${qui} ${match.lossStreak} défaites d'affilée…`,
+    // Le GIF passe par setImage plutôt que par le contenu : l'image s'affiche
+    // alors seule, sans l'URL en clair au-dessus. C'est ce qui impose des URLs
+    // de média directes dans gifs.js — une page Tenor ne pourrait apparaître
+    // que sous forme de lien, donc visible.
+    embeds: [new EmbedBuilder().setColor(COLOR.loss).setImage(randomDefeatGif())],
     allowedMentions: { users: cites, roles: [], parse: [] },
   };
 }
