@@ -19,6 +19,7 @@ export const DEFEAT_GIFS = [
   'https://static2.klipy.com/ii/bea85337777ad0e23e63683391435543/98/e2/bDq792YE.gif',
   'https://static2.klipy.com/ii/84b4c0b02782dda9051003f9e36484ec/56/f0/kshSP0tO.gif',
   'https://static2.klipy.com/ii/9ed0121ed465c12e1f3dda331ed33f0e/3e/90/7PYcGhJcogDru.gif',
+  'https://static2.klipy.com/ii/4493325008d34b7bf8cd6813cd5c1619/ea/85/PNc9igj9SMtXhxy2m0D.gif'
 ];
 
 /** Nombre de defaites consecutives a partir duquel le GIF part. */
