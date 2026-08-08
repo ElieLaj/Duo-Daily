@@ -43,6 +43,7 @@ function migrateSchema(db) {
       rank_after TEXT,
       league_points_after INTEGER,
       ladder_after INTEGER,
+      duo_with TEXT,
       source TEXT NOT NULL DEFAULT 'live',
       PRIMARY KEY (player_key, match_id)
     );
@@ -90,6 +91,10 @@ function migrateSchema(db) {
   const columns = new Set(db.prepare('PRAGMA table_info(matches)').all().map((column) => column.name));
   if (!columns.has('queue_id')) db.exec('ALTER TABLE matches ADD COLUMN queue_id INTEGER');
   if (!columns.has('queue_type')) db.exec('ALTER TABLE matches ADD COLUMN queue_type TEXT');
+  // Cles des joueurs suivis presents dans la meme equipe, separees par des
+  // virgules. Vide plutot que NULL quand la partie a ete jouee seul, pour
+  // distinguer « aucun duo » de « partie archivee avant cette colonne ».
+  if (!columns.has('duo_with')) db.exec('ALTER TABLE matches ADD COLUMN duo_with TEXT');
   db.prepare('UPDATE matches SET queue_id = ?, queue_type = ? WHERE queue_id IS NULL').run(
     config.queueId,
     config.queue,
@@ -288,8 +293,8 @@ const UPSERT_MATCH = `
     player_key, player_label, puuid, match_id, queue_id, queue_type, ended_at, observed_at,
     champion_name, kills, deaths, assists, cs, duration_sec, win, remake,
     lp_delta, lp_delta_games, tier_after, rank_after, league_points_after,
-    ladder_after, source
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'live')
+    ladder_after, duo_with, source
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'live')
   ON CONFLICT (player_key, match_id) DO UPDATE SET
     player_label = excluded.player_label,
     puuid = COALESCE(excluded.puuid, matches.puuid),
@@ -310,6 +315,7 @@ const UPSERT_MATCH = `
     rank_after = COALESCE(matches.rank_after, excluded.rank_after),
     league_points_after = COALESCE(matches.league_points_after, excluded.league_points_after),
     ladder_after = COALESCE(matches.ladder_after, excluded.ladder_after),
+    duo_with = COALESCE(excluded.duo_with, matches.duo_with),
     source = 'live'
 `;
 
@@ -356,6 +362,7 @@ export async function archiveFinishedGames(records) {
         hasRankSnapshot ? entry?.rank ?? null : null,
         hasRankSnapshot ? entry?.leaguePoints ?? null : null,
         hasRankSnapshot && Number.isFinite(record.ladder) ? record.ladder : null,
+        (match.duo ?? []).map((d) => d.key).join(','),
       );
     }
     db.exec('COMMIT');
@@ -529,7 +536,8 @@ export async function getRankSamples(playerKey, startMs, endMs) {
 export async function getDayTotals(startMs, endMs) {
   const db = await openDatabase();
   const rows = db.prepare(`
-    SELECT player_key, player_label, win, remake, duration_sec, kills, deaths, assists, champion_name
+    SELECT player_key, player_label, win, remake, duration_sec, kills, deaths, assists,
+           champion_name, duo_with
     FROM matches
     WHERE queue_id = ? AND ended_at >= ? AND ended_at < ?
     ORDER BY player_key, ended_at ASC
@@ -539,6 +547,9 @@ export async function getDayTotals(startMs, endMs) {
   let seconds = 0;
   let pire = null;
   const parJoueur = new Map();
+  // Paires de joueurs, comptees une seule fois : la meme partie apparait sous
+  // chacun des deux, d'ou une cle triee et un ensemble d'identifiants de partie.
+  const duos = new Map();
 
   for (const row of rows) {
     if (row.remake) continue; // un remake n'a pas compte au classement
@@ -559,6 +570,14 @@ export async function getDayTotals(startMs, endMs) {
       deaths: 0,
       assists: 0,
     };
+    for (const partenaire of (row.duo_with ?? '').split(',').filter(Boolean)) {
+      const paire = [row.player_key, partenaire].sort().join(' + ');
+      const vue = duos.get(paire) ?? { paire, parties: 0, victoires: 0 };
+      vue.parties++;
+      if (row.win) vue.victoires++;
+      duos.set(paire, vue);
+    }
+
     stats.games++;
     stats.kills += row.kills ?? 0;
     stats.deaths += row.deaths ?? 0;
@@ -624,6 +643,11 @@ export async function getDayTotals(startMs, endMs) {
     meilleurKda: top((a, b) => (b.kda > a.kda ? b : a)),
     plusDeMorts: top((a, b) => (b.deaths > a.deaths ? b : a)),
     pirePartie: pire,
+    // Chaque partie en duo est comptee deux fois, une par joueur : on divise.
+    duos: [...duos.values()]
+      .map((d) => ({ ...d, parties: Math.round(d.parties / 2), victoires: Math.round(d.victoires / 2) }))
+      .filter((d) => d.parties > 0)
+      .sort((a, b) => b.parties - a.parties),
   };
 }
 

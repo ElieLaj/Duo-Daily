@@ -339,6 +339,16 @@ function nearClownLine(match) {
  * arrive bien plus souvent qu'une montée de rang, ça ne justifie pas de
  * notifier tout le monde.
  */
+/**
+ * Ligne des coéquipiers suivis, en sous-texte : c'est un contexte de la
+ * partie, pas un évènement à mettre en avant.
+ */
+function duoLine(match, links) {
+  if (!match.duo?.length) return '';
+  const noms = match.duo.map((d) => nameOf(d.key, d.label, links)).join(', ');
+  return `\n-# 👥 ${match.duo.length > 1 ? 'Avec' : 'En duo avec'} ${noms}`;
+}
+
 function recordLine(record) {
   if (!record) return '';
   const ancien = `${rankLabel(record.depuis)} ${record.depuis.leaguePoints ?? 0} LP`;
@@ -404,7 +414,9 @@ export function buildMatchMessage({
     .setColor(match.remake ? COLOR.neutral : match.win ? COLOR.win : COLOR.loss)
     .setAuthor({ name: `${player.label} a terminé une partie`, iconURL: player.iconUrl ?? undefined, url })
     .setDescription(
-      `## ${icon}${match.champion?.name ?? match.championName} — ${issue}${lpTitre}` + recordLine(record),
+      `## ${icon}${match.champion?.name ?? match.championName} — ${issue}${lpTitre}` +
+        duoLine(match, links) +
+        recordLine(record),
     );
 
   const fields = [{ name: 'K/D/A', value: kdaText(match), inline: true }];
@@ -620,6 +632,11 @@ function summaryEmbed(report) {
   if (totals?.plusDeMorts) {
     const s = totals.plusDeMorts;
     fields.push({ name: '💀 Plus de morts', value: `**${s.label}** — ${s.deaths}`, inline: true });
+  }
+  const duo = totals?.duos?.[0];
+  if (duo) {
+    const wr = duo.parties > 0 ? ` — ${duo.victoires} V / ${duo.parties}` : '';
+    fields.push({ name: '👥 Duo le plus actif', value: `**${duo.paire}**${wr}`, inline: true });
   }
   if (totals?.pirePartie) {
     const p = totals.pirePartie;

@@ -115,5 +115,10 @@ export async function getMatchResult(matchId, puuid) {
     cs: (me.totalMinionsKilled ?? 0) + (me.neutralMinionsKilled ?? 0),
     // gameDuration est en secondes depuis le patch 11.20.
     durationSec: match.info.gameDuration ?? null,
+    // Coequipiers, pour reperer les parties jouees en duo entre joueurs suivis.
+    // Seule la meme equipe compte : se croiser en adversaires n'est pas un duo.
+    allies: (match.info.participants ?? [])
+      .filter((p) => p.teamId === me.teamId && p.puuid !== puuid)
+      .map((p) => p.puuid),
   };
 }
