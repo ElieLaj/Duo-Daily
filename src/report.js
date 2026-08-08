@@ -321,6 +321,21 @@ export async function buildPlayerDetail(input, dateInput = null) {
 
   const { matches, truncated } = await fetchTodayMatches(summary.snapshot.puuid, now);
 
+  // Duos entre joueurs suivis, deduits des coequipiers renvoyes par Match-V5.
+  // Aucun appel supplementaire : la liste est deja dans le detail des parties.
+  const parPuuid = new Map();
+  for (const autre of config.players) {
+    if (autre.key === player.key) continue;
+    const sien = store.live?.[autre.key]?.puuid ?? store.players?.[autre.key]?.puuid;
+    if (sien) parPuuid.set(sien, autre);
+  }
+  for (const match of matches) {
+    match.duo = (match.allies ?? [])
+      .map((p) => parPuuid.get(p))
+      .filter(Boolean)
+      .map((autre) => ({ key: autre.key, label: autre.label }));
+  }
+
   // Variations de LP relevees en direct par la surveillance. SQLite ne les
   // plafonne plus aux 30 dernieres parties ; Riot ne permet toujours pas de
   // recuperer a posteriori les parties passees pendant que le bot etait coupe.
