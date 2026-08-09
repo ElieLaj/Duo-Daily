@@ -4,7 +4,7 @@ import { emblemUrl, ladderPoints, rankLabel, tierColor } from './rank.js';
 import { rankEmoji } from './emojis.js';
 import { opggUrl } from './links.js';
 import { formatDateFr, formatDateTimeFr } from './time.js';
-import { GIF_STREAK_MIN, randomDefeatGif } from './gifs.js';
+import { GIF_STREAK_MIN, defeatImageFor, randomDefeatGif } from './gifs.js';
 
 const COLOR = { error: 0xb91c1c, win: 0x22c55e, loss: 0xef4444, neutral: 0x94a3b8, promotion: 0xf59e0b };
 
@@ -692,13 +692,17 @@ export function buildDefeatGifMessage(player, match, links = new Map()) {
 
   const qui = nameOf(player.key, player.label, links);
   const cites = links.has(player.key) ? [links.get(player.key)] : [];
-  return {
-    // L'URL est dans le contenu et reste donc visible. C'est le seul rendu
-    // fiable : par setImage, Discord échouait à charger le média et l'encart
-    // ressortait vide.
-    content: `${qui} ${match.lossStreak} défaites d'affilée…\n${randomDefeatGif()}`,
-    allowedMentions: { users: cites, roles: [], parse: [] },
-  };
+  const entete = `${qui} ${match.lossStreak} défaites d'affilée…`;
+  const mentions = { users: cites, roles: [], parse: [] };
+
+  // Image dédiée : jointe au message, donc affichée sans URL visible et sans
+  // dépendre du proxy de Discord.
+  const fichier = defeatImageFor(player.key);
+  if (fichier) return { content: entete, files: [fichier], allowedMentions: mentions };
+
+  // Sinon le tirage habituel. L'URL reste visible dans le contenu : c'est le
+  // seul rendu fiable pour un média distant, setImage échouant à le charger.
+  return { content: `${entete}\n${randomDefeatGif()}`, allowedMentions: mentions };
 }
 
 // Discord refuse un message de plus de 10 encarts : au-delà, le résumé doit

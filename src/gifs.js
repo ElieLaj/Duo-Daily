@@ -1,3 +1,8 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
+import { ROOT } from './config.js';
+
 /**
  * GIFs de moquerie, affiches quand un joueur enchaine les defaites.
  *
@@ -27,4 +32,31 @@ export const GIF_STREAK_MIN = 4;
 
 export function randomDefeatGif() {
   return DEFEAT_GIFS[Math.floor(Math.random() * DEFEAT_GIFS.length)];
+}
+
+/**
+ * Image dediee a certains joueurs, servie a la place du tirage aleatoire.
+ *
+ * Le fichier vit dans assets/ et est joint au message plutot que reference par
+ * une URL : pas d'hebergement a trouver, et Discord affiche une piece jointe
+ * sans passer par son proxy — ce qui evite l'echec de chargement rencontre
+ * avec les medias distants.
+ *
+ * Cle = cle du joueur telle qu'elle figure dans PLAYERS.
+ */
+const OVERRIDES = {
+  'Ronor#0101': 'didier.jpg',
+  'jiji#lilya': 'didier.jpg',
+};
+
+/**
+ * @returns {string|null} chemin du fichier a joindre, ou null si le joueur n'a
+ *   pas d'image dediee ou que le fichier est absent — on retombe alors sur le
+ *   tirage aleatoire plutot que d'envoyer un message casse.
+ */
+export function defeatImageFor(playerKey) {
+  const nom = OVERRIDES[playerKey];
+  if (!nom) return null;
+  const chemin = path.join(ROOT, 'assets', nom);
+  return fs.existsSync(chemin) ? chemin : null;
 }
