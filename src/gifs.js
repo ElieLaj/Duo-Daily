@@ -53,18 +53,34 @@ const OVERRIDES = {
 const EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
 
 /**
+ * Recherche insensible a la casse, par parcours du dossier.
+ *
+ * Un simple existsSync('didier.png') suffirait sous Windows, dont le systeme
+ * de fichiers ignore la casse — mais pas sous Linux, ou tourne le serveur :
+ * un fichier nomme DIDIER.png n'y serait jamais trouve, et le bot retomberait
+ * silencieusement sur le tirage aleatoire.
+ *
  * @returns {string|null} chemin du fichier a joindre, ou null si le joueur n'a
- *   pas d'image dediee ou qu'aucun fichier ne correspond — on retombe alors
- *   sur le tirage aleatoire plutot que d'envoyer un message casse.
+ *   pas d'image dediee ou qu'aucun fichier ne correspond.
  */
 export function defeatImageFor(playerKey) {
   const base = OVERRIDES[playerKey];
   if (!base) return null;
-  for (const ext of EXTENSIONS) {
-    const chemin = path.join(ROOT, 'assets', base + ext);
-    if (fs.existsSync(chemin)) return chemin;
+
+  const dossier = path.join(ROOT, 'assets');
+  let fichiers;
+  try {
+    fichiers = fs.readdirSync(dossier);
+  } catch {
+    return null;
   }
-  return null;
+
+  const cible = base.toLowerCase();
+  const trouve = fichiers.find((nom) => {
+    const ext = path.extname(nom).toLowerCase();
+    return EXTENSIONS.includes(ext) && path.basename(nom, path.extname(nom)).toLowerCase() === cible;
+  });
+  return trouve ? path.join(dossier, trouve) : null;
 }
 
 /** Etat des images dediees, pour le journal de demarrage. */
