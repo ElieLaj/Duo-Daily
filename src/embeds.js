@@ -695,8 +695,8 @@ export function buildDefeatGifMessage(player, match, links = new Map()) {
   const entete = `${qui} ${match.lossStreak} défaites d'affilée…`;
   const mentions = { users: cites, roles: [], parse: [] };
 
-  // Image dédiée : jointe au message, donc affichée sans URL visible et sans
-  // dépendre du proxy de Discord.
+  // Image dédiée à ce joueur : jointe au message, donc affichée sans URL
+  // visible et sans dépendre du proxy de Discord.
   const fichier = defeatImageFor(player.key);
   if (fichier) return { content: entete, files: [fichier], allowedMentions: mentions };
 

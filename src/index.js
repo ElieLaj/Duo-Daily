@@ -17,6 +17,7 @@ import {
 } from './embeds.js';
 import { backfillTodayHistory, pollFinishedGames, primeLiveState } from './live.js';
 import { loadRankEmojis, rankEmojiCount } from './emojis.js';
+import { defeatImageStatus } from './gifs.js';
 import { initLogger, log } from './logger.js';
 import { buildPlayerDetail, buildReport, commitReport, primeDailySnapshots } from './report.js';
 import { loadPromotionRoles, promotionRoleIds } from './roles.js';

@@ -38,25 +38,56 @@ export function randomDefeatGif() {
  * Image dediee a certains joueurs, servie a la place du tirage aleatoire.
  *
  * Le fichier vit dans assets/ et est joint au message plutot que reference par
- * une URL : pas d'hebergement a trouver, et Discord affiche une piece jointe
- * sans passer par son proxy — ce qui evite l'echec de chargement rencontre
- * avec les medias distants.
+ * une URL : rien a heberger, et Discord affiche une piece jointe sans passer
+ * par son proxy — ce qui evite l'echec de chargement rencontre avec les
+ * medias distants.
  *
- * Cle = cle du joueur telle qu'elle figure dans PLAYERS.
+ * Cle = cle du joueur telle qu'elle figure dans PLAYERS ; valeur = nom de
+ * fichier SANS extension, celle-ci etant cherchee parmi les formats courants.
  */
 const OVERRIDES = {
-  'Ronor#0101': 'didier.jpg',
-  'jiji#lilya': 'didier.jpg',
+  'Ronor#0101': 'didier',
+  'jiji#lilya': 'didier',
 };
 
+const EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
+
 /**
+ * Recherche insensible a la casse, par parcours du dossier.
+ *
+ * Un simple existsSync('didier.png') suffirait sous Windows, dont le systeme
+ * de fichiers ignore la casse — mais pas sous Linux, ou tourne le serveur :
+ * un fichier nomme DIDIER.png n'y serait jamais trouve, et le bot retomberait
+ * silencieusement sur le tirage aleatoire.
+ *
  * @returns {string|null} chemin du fichier a joindre, ou null si le joueur n'a
- *   pas d'image dediee ou que le fichier est absent — on retombe alors sur le
- *   tirage aleatoire plutot que d'envoyer un message casse.
+ *   pas d'image dediee ou qu'aucun fichier ne correspond.
  */
 export function defeatImageFor(playerKey) {
-  const nom = OVERRIDES[playerKey];
-  if (!nom) return null;
-  const chemin = path.join(ROOT, 'assets', nom);
-  return fs.existsSync(chemin) ? chemin : null;
+  const base = OVERRIDES[playerKey];
+  if (!base) return null;
+
+  const dossier = path.join(ROOT, 'assets');
+  let fichiers;
+  try {
+    fichiers = fs.readdirSync(dossier);
+  } catch {
+    return null;
+  }
+
+  const cible = base.toLowerCase();
+  const trouve = fichiers.find((nom) => {
+    const ext = path.extname(nom).toLowerCase();
+    return EXTENSIONS.includes(ext) && path.basename(nom, path.extname(nom)).toLowerCase() === cible;
+  });
+  return trouve ? path.join(dossier, trouve) : null;
+}
+
+/** Etat des images dediees, pour le journal de demarrage. */
+export function defeatImageStatus() {
+  return Object.entries(OVERRIDES).map(([key, base]) => ({
+    key,
+    base,
+    chemin: defeatImageFor(key),
+  }));
 }
