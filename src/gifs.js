@@ -19,8 +19,11 @@ import { ROOT } from './config.js';
 export const DEFEAT_GIFS = [
   'https://tenor.com/view/laughing-holding-laugh-gif-546198937645667256',
   'https://tenor.com/view/funny-gif-3717613948823709624',
+  'https://tenor.com/view/smiling-friends-psychicpebbles-pim-smiling-friends-pim-mr-boss-gif-1373626090718171797',
+  'https://tenor.com/view/lep-league-of-legends-feeding-smile-professional-gif-10256898',
   'https://tenor.com/view/jerry-meme-tom-and-jerry-meme-jerry-points-get-a-load-of-this-guy-this-guy-gif-11384860625931393733',
   'https://tenor.com/view/disappointed-meme-funny-ratio-black-gif-11008400595622414539',
+  'https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExcnltNXgybDdkNzZ6NG41M2Q3YWhzaDBtN2JtZzkxMDY4a2ZxdTNjZCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/iJLCIxU8cx7fFM7zaS/giphy.gif',
   'https://static2.klipy.com/ii/bea85337777ad0e23e63683391435543/98/e2/bDq792YE.gif',
   'https://static2.klipy.com/ii/84b4c0b02782dda9051003f9e36484ec/56/f0/kshSP0tO.gif',
   'https://static2.klipy.com/ii/9ed0121ed465c12e1f3dda331ed33f0e/3e/90/7PYcGhJcogDru.gif',
@@ -32,6 +35,23 @@ export const GIF_STREAK_MIN = 4;
 
 export function randomDefeatGif() {
   return DEFEAT_GIFS[Math.floor(Math.random() * DEFEAT_GIFS.length)];
+}
+
+/** GIFs de celebration tires quand un joueur atteint trois victoires de suite. */
+export const WIN_STREAK_GIFS = [
+  'https://tenor.com/view/bleh-gif-2484976909584170518',
+  'https://tenor.com/fr/view/faker-calling-faker-calling-faker-is-calling-goat-gif-84264726571740911',
+  'https://tenor.com/view/pacha-perfect-emperors-new-groove-very-good-gif-5346522',
+  'https://tenor.com/view/an-iq-too-high-crow-real-science-gif-2503924816758610181',
+  'https://tenor.com/view/lebron-james-lebron-fire-lebron-pregame-lebron-fire-gif-6415202897721076578',
+  'https://tenor.com/view/smug-daniel-craig-saturday-night-live-thats-right-yeah-gif-16611686',
+];
+
+/** Le GIF part une seule fois, au moment exact ou la serie atteint ce palier. */
+export const WIN_STREAK_GIF_AT = 3;
+
+export function randomWinStreakGif(random = Math.random) {
+  return WIN_STREAK_GIFS[Math.floor(random() * WIN_STREAK_GIFS.length)];
 }
 
 /**

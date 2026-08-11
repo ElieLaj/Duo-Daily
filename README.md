@@ -145,6 +145,11 @@ les parties détectées dans la fenêtre de 6 heures sont archivées. La série 
 victoires est cumulée dans l'état persisté, donc elle traverse les jours et les
 redémarrages.
 
+Quand un joueur atteint exactement **3 victoires consécutives**, le bot envoie
+un second message avec un GIF Tenor choisi au hasard dans `src/gifs.js`. Le GIF
+ne repart pas aux quatrième et cinquième victoires. Si le joueur est associé à
+un membre Discord via `/link`, ce membre est mentionné dans la célébration.
+
 ### Historique SQLite
 
 `data/snapshots.json` reste l'état courant lisible et le point de comparaison du

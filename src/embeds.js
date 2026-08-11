@@ -4,7 +4,13 @@ import { emblemUrl, ladderPoints, rankLabel, tierColor } from './rank.js';
 import { rankEmoji } from './emojis.js';
 import { opggUrl } from './links.js';
 import { formatDateFr, formatDateTimeFr } from './time.js';
-import { GIF_STREAK_MIN, defeatImageFor, randomDefeatGif } from './gifs.js';
+import {
+  GIF_STREAK_MIN,
+  WIN_STREAK_GIF_AT,
+  defeatImageFor,
+  randomDefeatGif,
+  randomWinStreakGif,
+} from './gifs.js';
 
 const COLOR = { error: 0xb91c1c, win: 0x22c55e, loss: 0xef4444, neutral: 0x94a3b8, promotion: 0xf59e0b };
 
@@ -703,6 +709,21 @@ export function buildDefeatGifMessage(player, match, links = new Map()) {
   // Sinon le tirage habituel. L'URL reste visible dans le contenu : c'est le
   // seul rendu fiable pour un média distant, setImage échouant à le charger.
   return { content: `${entete}\n${randomDefeatGif()}`, allowedMentions: mentions };
+}
+
+/**
+ * Celebration envoyee une seule fois quand la serie atteint trois victoires.
+ * Le lien Tenor reste dans le contenu pour que Discord genere son apercu.
+ */
+export function buildWinStreakGifMessage(player, match, links = new Map()) {
+  if (match.remake || !match.win || match.streak !== WIN_STREAK_GIF_AT) return null;
+
+  const qui = nameOf(player.key, player.label, links);
+  const cites = links.has(player.key) ? [links.get(player.key)] : [];
+  return {
+    content: `🔥 ${qui} atteint **${WIN_STREAK_GIF_AT} victoires d'affilée** !\n${randomWinStreakGif()}`,
+    allowedMentions: { users: cites, roles: [], parse: [] },
+  };
 }
 
 // Discord refuse un message de plus de 10 encarts : au-delà, le résumé doit

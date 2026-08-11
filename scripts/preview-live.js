@@ -11,7 +11,7 @@
 import { Client, GatewayIntentBits } from 'discord.js';
 
 import { assertConfig, config } from '../src/config.js';
-import { buildDefeatGifMessage, buildMatchMessage } from '../src/embeds.js';
+import { buildDefeatGifMessage, buildMatchMessage, buildWinStreakGifMessage } from '../src/embeds.js';
 import { championEmoji } from '../src/champemojis.js';
 import { getChampion } from '../src/champions.js';
 import { loadRankEmojis } from '../src/emojis.js';
@@ -107,6 +107,8 @@ client.once('clientReady', async () => {
 
       const gif = buildDefeatGifMessage(player, match, links);
       if (gif) await channel.send(gif);
+      const winGif = buildWinStreakGifMessage(player, match, links);
+      if (winGif) await channel.send(winGif);
 
       console.log(`posté : ${nom}`);
     }
