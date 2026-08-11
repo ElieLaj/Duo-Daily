@@ -13,6 +13,7 @@ import {
   buildMatchMessage,
   buildMessages,
   buildPlayerDetailMessage,
+  buildWinStreakGifMessage,
   renderText,
 } from './embeds.js';
 import { backfillTodayHistory, pollFinishedGames, primeLiveState } from './live.js';
@@ -232,6 +233,8 @@ async function runLiveCheck(client) {
       // contenu d'un message, jamais depuis un encart.
       const gif = buildDefeatGifMessage(announce.player, announce.match, links);
       if (gif) await channel.send(gif);
+      const winGif = buildWinStreakGifMessage(announce.player, announce.match, links);
+      if (winGif) await channel.send(winGif);
       if (announce.promotion) {
         log(`Montée de rang : ${announce.player.label} → ${announce.promotion.vers}`);
       }
