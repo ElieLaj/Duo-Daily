@@ -6,7 +6,7 @@ import { opggUrl } from './links.js';
 import { formatDateFr, formatDateTimeFr } from './time.js';
 import {
   GIF_STREAK_MIN,
-  WIN_STREAK_GIF_AT,
+  WIN_STREAK_GIF_MIN,
   defeatImageFor,
   randomDefeatGif,
   randomWinStreakGif,
@@ -712,16 +712,17 @@ export function buildDefeatGifMessage(player, match, links = new Map()) {
 }
 
 /**
- * Celebration envoyee une seule fois quand la serie atteint trois victoires.
+ * Celebration renvoyee a chaque victoire une fois la serie lancee : 3, puis 4,
+ * puis 5... comme cote defaites, la serie est feteee tant qu'elle tient.
  * Le lien Tenor reste dans le contenu pour que Discord genere son apercu.
  */
 export function buildWinStreakGifMessage(player, match, links = new Map()) {
-  if (match.remake || !match.win || match.streak !== WIN_STREAK_GIF_AT) return null;
+  if (match.remake || !match.win || !(match.streak >= WIN_STREAK_GIF_MIN)) return null;
 
   const qui = nameOf(player.key, player.label, links);
   const cites = links.has(player.key) ? [links.get(player.key)] : [];
   return {
-    content: `🔥 ${qui} atteint **${WIN_STREAK_GIF_AT} victoires d'affilée** !\n${randomWinStreakGif()}`,
+    content: `🔥 ${qui} enchaîne **${match.streak} victoires d'affilée** !\n${randomWinStreakGif()}`,
     allowedMentions: { users: cites, roles: [], parse: [] },
   };
 }

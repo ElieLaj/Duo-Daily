@@ -27,7 +27,8 @@ export const DEFEAT_GIFS = [
   'https://static2.klipy.com/ii/bea85337777ad0e23e63683391435543/98/e2/bDq792YE.gif',
   'https://static2.klipy.com/ii/84b4c0b02782dda9051003f9e36484ec/56/f0/kshSP0tO.gif',
   'https://static2.klipy.com/ii/9ed0121ed465c12e1f3dda331ed33f0e/3e/90/7PYcGhJcogDru.gif',
-  'https://static2.klipy.com/ii/4493325008d34b7bf8cd6813cd5c1619/ea/85/PNc9igj9SMtXhxy2m0D.gif'
+  'https://static2.klipy.com/ii/4493325008d34b7bf8cd6813cd5c1619/ea/85/PNc9igj9SMtXhxy2m0D.gif',
+  'https://static2.klipy.com/ii/925f17378dd1893b674a723c07535afe/21/cc/pFaC4957.gif'
 ];
 
 /** Nombre de defaites consecutives a partir duquel le GIF part. */
@@ -45,10 +46,16 @@ export const WIN_STREAK_GIFS = [
   'https://tenor.com/view/an-iq-too-high-crow-real-science-gif-2503924816758610181',
   'https://tenor.com/view/lebron-james-lebron-fire-lebron-pregame-lebron-fire-gif-6415202897721076578',
   'https://tenor.com/view/smug-daniel-craig-saturday-night-live-thats-right-yeah-gif-16611686',
+  'https://static2.klipy.com/ii/8ce8357c78ea940b9c2015daf05ce1a5/95/3c/QdKtgbTS.gif',
+  'https://static2.klipy.com/ii/d7aec6f6f171607374b2065c836f92f4/75/59/KRyoDMPk.gif',
+  'https://tenor.com/fr/view/hamster-pure-happiness-unicorn-rainbow-gif-12767925712391847557'
 ];
 
-/** Le GIF part une seule fois, au moment exact ou la serie atteint ce palier. */
-export const WIN_STREAK_GIF_AT = 3;
+/**
+ * Serie minimale pour declencher le GIF. Comme cote defaites, il repart a
+ * chaque victoire tant que la serie tient : 3, puis 4, puis 5...
+ */
+export const WIN_STREAK_GIF_MIN = 3;
 
 export function randomWinStreakGif(random = Math.random) {
   return WIN_STREAK_GIFS[Math.floor(random() * WIN_STREAK_GIFS.length)];

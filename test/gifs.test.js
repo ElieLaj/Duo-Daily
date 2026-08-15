@@ -11,7 +11,7 @@ test('choisit uniquement un GIF de celebration configure', () => {
   assert.equal(randomWinStreakGif(() => 0.999999), WIN_STREAK_GIFS.at(-1));
 });
 
-test('envoie le GIF seulement au passage exact a trois victoires', () => {
+test('envoie le GIF a chaque victoire des trois d affilee', () => {
   const message = buildWinStreakGifMessage(
     player,
     { win: true, remake: false, streak: 3 },
@@ -22,8 +22,14 @@ test('envoie le GIF seulement au passage exact a trois victoires', () => {
   assert.ok(WIN_STREAK_GIFS.some((url) => message.content.endsWith(url)));
   assert.deepEqual(message.allowedMentions, { users: ['123456789'], roles: [], parse: [] });
 
+  // La serie continue : un GIF par victoire, avec le compteur a jour.
+  for (const streak of [4, 5, 12]) {
+    const suite = buildWinStreakGifMessage(player, { win: true, remake: false, streak });
+    assert.match(suite.content, new RegExp(`${streak} victoires d'affilée`));
+    assert.ok(WIN_STREAK_GIFS.some((url) => suite.content.endsWith(url)));
+  }
+
   assert.equal(buildWinStreakGifMessage(player, { win: true, remake: false, streak: 2 }), null);
-  assert.equal(buildWinStreakGifMessage(player, { win: true, remake: false, streak: 4 }), null);
   assert.equal(buildWinStreakGifMessage(player, { win: false, remake: false, streak: 3 }), null);
   assert.equal(buildWinStreakGifMessage(player, { win: true, remake: true, streak: 3 }), null);
 });
