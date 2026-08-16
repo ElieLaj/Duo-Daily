@@ -41,14 +41,14 @@ export function randomDefeatGif() {
 /** GIFs de celebration tires quand un joueur atteint trois victoires de suite. */
 export const WIN_STREAK_GIFS = [
   'https://tenor.com/view/bleh-gif-2484976909584170518',
-  'https://tenor.com/fr/view/faker-calling-faker-calling-faker-is-calling-goat-gif-84264726571740911',
+  'https://tenor.com/view/faker-calling-faker-calling-faker-is-calling-goat-gif-84264726571740911',
   'https://tenor.com/view/pacha-perfect-emperors-new-groove-very-good-gif-5346522',
   'https://tenor.com/view/an-iq-too-high-crow-real-science-gif-2503924816758610181',
   'https://tenor.com/view/lebron-james-lebron-fire-lebron-pregame-lebron-fire-gif-6415202897721076578',
   'https://tenor.com/view/smug-daniel-craig-saturday-night-live-thats-right-yeah-gif-16611686',
   'https://static2.klipy.com/ii/8ce8357c78ea940b9c2015daf05ce1a5/95/3c/QdKtgbTS.gif',
   'https://static2.klipy.com/ii/d7aec6f6f171607374b2065c836f92f4/75/59/KRyoDMPk.gif',
-  'https://tenor.com/fr/view/hamster-pure-happiness-unicorn-rainbow-gif-12767925712391847557'
+  'https://tenor.com/view/hamster-pure-happiness-unicorn-rainbow-gif-12767925712391847557'
 ];
 
 /**
