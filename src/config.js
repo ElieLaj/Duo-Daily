@@ -58,6 +58,20 @@ function parseDailyTime(raw) {
   return { hour, minute };
 }
 
+/**
+ * Instant d'une rotation connue de la boutique, servant d'ancre au cycle.
+ * Attendu en ISO 8601 avec fuseau explicite : c'est un instant absolu, pas
+ * une heure locale, et omettre le fuseau ferait dependre le resultat du
+ * reglage de la machine qui fait tourner le bot.
+ */
+function parseAnchor(raw) {
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error(`SHOP_ANCHOR "${raw}" invalide (attendu : ISO 8601, ex. 2026-09-30T00:00:00Z)`);
+  }
+  return date;
+}
+
 const queue = str('QUEUE', 'RANKED_SOLO_5x5');
 if (!QUEUE_IDS[queue]) {
   throw new Error(`QUEUE "${queue}" inconnue (valeurs possibles : ${Object.keys(QUEUE_IDS).join(', ')})`);
@@ -96,6 +110,13 @@ export const config = {
   liveIntervalMin: Math.max(1, Number(str('LIVE_INTERVAL_MIN', '3')) || 3),
   // Salon dédié aux annonces de partie ; à défaut, celui du résumé.
   liveChannelId: str('LIVE_CHANNEL_ID') || str('DISCORD_CHANNEL_ID'),
+
+  // Rotation de la boutique fantastique. L'ancre par défaut est la rotation
+  // du 30 septembre 2026 à 02:00 UTC+2, exprimée en UTC.
+  shopAnnounce: str('SHOP_ANNOUNCE', 'true') !== 'false',
+  shopAnchor: parseAnchor(str('SHOP_ANCHOR', '2026-09-30T00:00:00Z')),
+  shopPeriodDays: Math.max(1, Number(str('SHOP_PERIOD_DAYS', '14')) || 14),
+  shopChannelId: str('SHOP_CHANNEL_ID') || str('DISCORD_CHANNEL_ID'),
 
   // Salon des scripts d'aperçu. Volontairement sans repli sur le salon
   // principal : mieux vaut un script qui refuse de partir qu'une salve de

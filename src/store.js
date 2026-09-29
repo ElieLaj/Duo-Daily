@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { config } from './config.js';
 
-const EMPTY = { version: 1, lastReportAt: null, players: {} };
+const EMPTY = { version: 1, lastReportAt: null, shopAnnouncedAt: null, players: {} };
 
 /** Charge l'etat persiste. Un fichier absent ou corrompu redemarre a zero. */
 export async function loadStore() {

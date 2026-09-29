@@ -23,8 +23,9 @@ import { initLogger, log } from './logger.js';
 import { buildPlayerDetail, buildReport, commitReport, primeDailySnapshots } from './report.js';
 import { loadPromotionRoles, promotionRoleIds } from './roles.js';
 import { APEX_TIERS, ladderPoints, rankLabel } from './rank.js';
-import { loadStore } from './store.js';
-import { lastScheduledOccurrence } from './time.js';
+import { buildShopMessage, lastRotation, nextRotation } from './shop.js';
+import { loadStore, updateStore } from './store.js';
+import { formatDateTimeFr, lastScheduledOccurrence } from './time.js';
 import {
   closeHistory,
   getPeak,
@@ -249,6 +250,74 @@ async function runLiveCheck(client) {
 }
 
 /**
+ * Au-dela de ce retard, une rotation manquee n'est plus annoncee : au premier
+ * lancement, ou au retour d'une longue coupure, signaler un changement vieux
+ * de plusieurs jours n'apprend rien a personne.
+ */
+const SHOP_CATCH_UP_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Annonce la rotation de la boutique si elle ne l'a pas deja ete.
+ *
+ * L'instant exact de la rotation sert de marqueur dans le store : deux
+ * passages rapproches, ou un redemarrage entre les deux, ne peuvent donc pas
+ * produire de doublon.
+ */
+async function maybeAnnounceShop(client) {
+  const rotation = lastRotation();
+  if (!rotation) return;
+
+  const marqueur = rotation.toISOString();
+  const store = await loadStore();
+  if (store.shopAnnouncedAt === marqueur) return;
+
+  if (Date.now() - rotation.getTime() > SHOP_CATCH_UP_MS) {
+    // Notee comme vue malgre tout, sinon elle serait reexaminee a chaque passage.
+    await updateStore((s) => {
+      s.shopAnnouncedAt = marqueur;
+    });
+    log(`Boutique : rotation du ${formatDateTimeFr(rotation, config.timezone)} trop ancienne, non annoncée`);
+    return;
+  }
+
+  const channel = await client.channels.fetch(config.shopChannelId).catch(() => null);
+  if (!channel?.isTextBased()) {
+    log(`Salon de la boutique inaccessible (${config.shopChannelId})`);
+    return;
+  }
+
+  await channel.send(buildShopMessage(rotation));
+  // Marque apres l'envoi seulement : un echec doit pouvoir etre retente au
+  // passage suivant plutot que d'etre avale silencieusement.
+  await updateStore((s) => {
+    s.shopAnnouncedAt = marqueur;
+  });
+  log(`Boutique : rotation du ${formatDateTimeFr(rotation, config.timezone)} annoncée`);
+}
+
+/**
+ * Minuteur cale sur la prochaine rotation, re-arme a chaque passage.
+ *
+ * Un unique setTimeout de quatorze jours tiendrait dans la limite de
+ * setTimeout, mais deriverait sur une machine mise en veille. Le plafond
+ * d'une heure fait re-verifier regulierement pour rien couter, tout en
+ * laissant la derniere attente tomber pile a l'heure de la rotation.
+ */
+function scheduleShopAnnouncements(client) {
+  const PLAFOND_MS = 60 * 60 * 1000;
+  const passage = async () => {
+    try {
+      await maybeAnnounceShop(client);
+    } catch (err) {
+      log("Échec de l'annonce de la boutique :", err.message);
+    }
+    const attente = Math.min(PLAFOND_MS, Math.max(1_000, nextRotation().getTime() - Date.now()));
+    setTimeout(passage, attente);
+  };
+  passage();
+}
+
+/**
  * /link : associe un joueur suivi a un membre du serveur.
  *
  * Ouverte a tout le monde, comme demande. Sans membre, la liaison est retiree.
@@ -402,6 +471,11 @@ async function main() {
         setInterval(() => runLiveCheck(client), config.liveIntervalMin * 60_000);
         runLiveCheck(client);
         log(`Surveillance des parties toutes les ${config.liveIntervalMin} min`);
+      }
+
+      if (config.shopAnnounce) {
+        scheduleShopAnnouncements(client);
+        log(`Boutique : prochaine rotation le ${formatDateTimeFr(nextRotation(), config.timezone)}`);
       }
 
       // Rattrapage : le PC est peut-etre reste eteint a l'heure prevue.
