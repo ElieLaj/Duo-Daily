@@ -402,6 +402,20 @@ function crossingLines(player, croisements, links) {
   );
 }
 
+/**
+ * Victoire décrochée avec un KDA sous 1 : il a été porté, et ça se dit.
+ *
+ * Zéro mort rend le KDA infini, donc jamais inférieur à 1 : la division n'est
+ * faite que lorsqu'elle a un sens. Un remake ne compte pas non plus — personne
+ * n'a été porté dans une partie qui n'a pas eu lieu.
+ */
+export function carriedLine(match) {
+  if (match.remake || !match.win) return false;
+  const morts = match.deaths ?? 0;
+  if (morts <= 0) return false;
+  return ((match.kills ?? 0) + (match.assists ?? 0)) / morts < 1;
+}
+
 /** « ⭐ 8.4/10 », suivi de la distinction s'il y en a une. */
 function mvpText({ score, badge }) {
   const distinction = badge === 'MVP' ? ' · 🏆 **MVP**' : badge === 'ACE' ? ' · 💪 **ACE**' : '';
@@ -497,6 +511,10 @@ export function buildMatchMessage({
   // Le joueur est interpellé nommément quand son compte est lié : sans ça,
   // « t'as loosé deux fois » ne s'adresse visiblement à personne.
   if (nargue) entete.push(links.has(player.key) ? `${moi} ${nargue}` : nargue);
+
+  // Porté par son équipe. La mention part dans le contenu, donc elle notifie
+  // vraiment — c'est tout l'intérêt de la ligne.
+  if (carriedLine(match)) entete.push(`${moi} a int mais s'est fait carry`);
 
   // Série de défaites brisée. `brokeLossStreak` porte la longueur d'avant la
   // victoire, capturée au moment de la remise à zéro.
