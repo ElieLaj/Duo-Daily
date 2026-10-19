@@ -1,4 +1,5 @@
 import { config } from './config.js';
+import { mvpFor } from './mvp.js';
 import { RateLimiter, sleep } from './ratelimit.js';
 
 const limiter = RateLimiter.parse(config.rateLimits, config.rateSafety);
@@ -115,6 +116,9 @@ export async function getMatchResult(matchId, puuid) {
     cs: (me.totalMinionsKilled ?? 0) + (me.neutralMinionsKilled ?? 0),
     // gameDuration est en secondes depuis le patch 11.20.
     durationSec: match.info.gameDuration ?? null,
+    // Note de performance. Rien a payer en requetes : les dix participants
+    // sont deja la. Sans objet sur un remake, ou personne n'a rien fait.
+    mvp: me.gameEndedInEarlySurrender ? null : mvpFor(match.info.participants, puuid),
     // Coequipiers, pour reperer les parties jouees en duo entre joueurs suivis.
     // Seule la meme equipe compte : se croiser en adversaires n'est pas un duo.
     allies: (match.info.participants ?? [])
