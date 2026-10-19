@@ -402,6 +402,12 @@ function crossingLines(player, croisements, links) {
   );
 }
 
+/** « ⭐ 8.4/10 », suivi de la distinction s'il y en a une. */
+function mvpText({ score, badge }) {
+  const distinction = badge === 'MVP' ? ' · 🏆 **MVP**' : badge === 'ACE' ? ' · 💪 **ACE**' : '';
+  return `⭐ **${score.toFixed(1)}**/10${distinction}`;
+}
+
 export function buildMatchMessage({
   player,
   match,
@@ -468,6 +474,11 @@ export function buildMatchMessage({
     value: variation ? `${variation} · ${rang}` : rang,
     inline: false,
   });
+
+  // Sous les LP, comme demandé. Absent des aperçus et des remakes, qui
+  // n'embarquent pas de note : un champ vide vaut moins que pas de champ.
+  if (match.mvp) fields.push({ name: 'Score', value: mvpText(match.mvp), inline: false });
+
   embed.addFields(fields);
 
   if (skipped > 0) {
