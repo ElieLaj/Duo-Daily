@@ -108,6 +108,31 @@ export function dayOfWeek(date, timeZone) {
  * jour marque le début d'un nouveau cycle, pas la fin de l'ancien. Les autres
  * jours renvoient le mercredi de la même semaine ISO.
  */
+/**
+ * Minuit local, `jours` jours calendaires apres `date`.
+ *
+ * Arithmetique calendaire plutot que n x 24 h : une semaine qui contient un
+ * changement d'heure ne dure pas 168 h, et l'addition naive deraperait.
+ */
+export function startOfDayPlus(date, jours, timeZone) {
+  const p = partsIn(date, timeZone);
+  const cible = new Date(Date.UTC(p.year, p.month - 1, p.day + jours));
+  return fromZoned(
+    { year: cible.getUTCFullYear(), month: cible.getUTCMonth() + 1, day: cible.getUTCDate(), hour: 0, minute: 0 },
+    timeZone,
+  );
+}
+
+/**
+ * Debut de la semaine CONTENANT `date`, au mercredi des patchs.
+ *
+ * Distinct de patchWeekStart, qui recule toujours d'au moins un jour pour
+ * designer la semaine ecoulee : ici, un mercredi ouvre sa propre semaine.
+ */
+export function weekStartOf(date, timeZone) {
+  return dayOfWeek(date, timeZone) === 3 ? startOfDay(date, timeZone) : patchWeekStart(date, timeZone);
+}
+
 export function patchWeekStart(date, timeZone) {
   const p = partsIn(date, timeZone);
   const dow = new Date(Date.UTC(p.year, p.month - 1, p.day)).getUTCDay();

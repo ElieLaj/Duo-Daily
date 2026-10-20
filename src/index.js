@@ -20,12 +20,26 @@ import { backfillTodayHistory, pollFinishedGames, primeLiveState } from './live.
 import { loadRankEmojis, rankEmojiCount } from './emojis.js';
 import { defeatImageStatus } from './gifs.js';
 import { initLogger, log } from './logger.js';
-import { buildPlayerDetail, buildReport, buildWeeklyReport, commitReport, primeDailySnapshots } from './report.js';
+import {
+  buildArchivedWeek,
+  buildPlayerDetail,
+  buildReport,
+  buildWeeklyReport,
+  commitReport,
+  primeDailySnapshots,
+} from './report.js';
 import { loadPromotionRoles, promotionRoleIds } from './roles.js';
 import { APEX_TIERS, ladderPoints, rankLabel } from './rank.js';
 import { buildShopMessage, lastRotation, nextRotation } from './shop.js';
 import { loadStore, updateStore } from './store.js';
-import { dayOfWeek, formatDateTimeFr, lastScheduledOccurrence } from './time.js';
+import {
+  dayOfWeek,
+  formatDateFr,
+  formatDateTimeFr,
+  lastScheduledOccurrence,
+  parseDateFr,
+  weekStartOf,
+} from './time.js';
 import {
   closeHistory,
   getPeak,
@@ -87,6 +101,12 @@ const COMMANDS = [
       option
         .setName('date')
         .setDescription('Journée archivée au format JJ-MM-AAAA (vide = résumé actuel)')
+        .setAutocomplete(true),
+    )
+    .addStringOption((option) =>
+      option
+        .setName('semaine')
+        .setDescription('Bilan d’une semaine passée, du mercredi au mardi (prioritaire sur « date »)')
         .setAutocomplete(true),
     )
     .addBooleanOption((option) =>
@@ -537,6 +557,32 @@ async function main() {
     if (interaction.isAutocomplete()) {
       const focused = interaction.options.getFocused(true);
       const saisie = String(focused.value ?? '').toLowerCase();
+      if (focused.name === 'semaine') {
+        // Les semaines sont deduites des journees reellement archivees : en
+        // proposer une sans partie ne menerait qu'a un bilan vide.
+        const dates = await listArchivedDates(null, 200).catch(() => []);
+        const courante = weekStartOf(new Date(), config.timezone);
+        const vues = new Set();
+        const semaines = [];
+        for (const label of dates) {
+          const debut = weekStartOf(new Date(parseDateFr(label, config.timezone).start), config.timezone);
+          // La semaine en cours est ecartee : elle n'est pas finie, et c'est
+          // le bilan hebdomadaire du mercredi qui la couvre.
+          if (debut >= courante) continue;
+          const texte = formatDateFr(new Date(debut), config.timezone);
+          if (vues.has(texte)) continue;
+          vues.add(texte);
+          semaines.push(texte);
+        }
+        await interaction.respond(
+          semaines
+            .filter((semaine) => semaine.includes(saisie))
+            .slice(0, 25)
+            .map((semaine) => ({ name: `semaine du ${semaine}`, value: semaine })),
+        ).catch(() => {});
+        return;
+      }
+
       if (focused.name === 'date') {
         const selectedPlayer = interaction.commandName === 'joueur'
           ? interaction.options.getString('nom')
@@ -585,8 +631,12 @@ async function main() {
         // Pas de commitReport ici : un apercu a la demande ne doit pas consommer
         // le delta que le resume du soir doit encore afficher.
         const date = interaction.options.getString('date');
+        const semaine = interaction.options.getString('semaine');
         const onlyGlobal = interaction.options.getBoolean('global') ?? false;
-        const [premier, ...suite] = buildMessages(await buildReport(date), { onlyGlobal });
+        // « semaine » l'emporte sur « date » : les deux decrivent une periode,
+        // et la plus large est forcement celle qui a ete voulue en dernier.
+        const report = semaine ? await buildArchivedWeek(semaine) : await buildReport(date);
+        const [premier, ...suite] = buildMessages(report, { onlyGlobal });
         await interaction.editReply(premier);
         // Une reponse ne porte que 10 encarts : le reste part en messages liés.
         for (const message of suite) await interaction.followUp(message);

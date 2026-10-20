@@ -3,7 +3,7 @@ import { getAccount, getLeagueEntries, getMatchIds, getMatchResult, getSummoner 
 import { profileIconUrl } from './ddragon.js';
 import { ladderPoints } from './rank.js';
 import { loadStore, updateStore } from './store.js';
-import { formatDateFr, parseDateFr, patchWeekStart, startOfDay } from './time.js';
+import { formatDateFr, parseDateFr, patchWeekStart, startOfDay, startOfDayPlus, weekStartOf } from './time.js';
 import {
   getArchivedDay,
   getDayTotals,
@@ -420,6 +420,37 @@ async function collectWeeklyPlayer(player, store, now, weekStart) {
  * Remplace le résumé quotidien chaque mercredi soir : les stats couvrent toute
  * la semaine écoulée depuis le dernier patch, et non la seule journée en cours.
  */
+/**
+ * Bilan d'une semaine passee : du mercredi des patchs au mardi suivant.
+ *
+ * N'importe quelle date de la semaine convient, elle est ramenee au mercredi
+ * qui l'ouvre.
+ *
+ * Tout est lu dans l'archive locale, la ou le bilan de la semaine en cours
+ * interroge Riot : league-v4 ne renvoie que le rang d'aujourd'hui, qui n'a
+ * rien a voir avec celui d'une semaine revolue.
+ */
+export async function buildArchivedWeek(dateInput) {
+  const jour = selectedPeriod(dateInput);
+  const start = weekStartOf(new Date(jour.start), config.timezone);
+  // Bornee a maintenant : une semaine encore en cours ne doit pas s'annoncer
+  // comme allant jusqu'a un mardi qui n'est pas arrive.
+  const end = Math.min(startOfDayPlus(new Date(start), 7, config.timezone), Date.now());
+  const period = { start, end };
+
+  const players = [];
+  for (const player of config.players) players.push(await archivedPlayer(player, period));
+
+  const dateLabel =
+    `semaine du ${formatDateFr(new Date(start), config.timezone)} au ${formatDateFr(new Date(end - 1), config.timezone)}`;
+
+  return finalizeReport(
+    { at: new Date(end - 1), dateLabel, comparedTo: null, historical: true, weekly: true, players },
+    start,
+    end,
+  );
+}
+
 export async function buildWeeklyReport() {
   const now = new Date();
   const weekStart = patchWeekStart(now, config.timezone);
