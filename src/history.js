@@ -618,7 +618,14 @@ export async function getDayTotals(startMs, endMs) {
 
     // Pire partie de la journee, au KDA. Les morts departagent les ex aequo :
     // deux parties a 0 de KDA ne se valent pas si l'une compte 12 morts.
-    if (Number.isFinite(row.deaths)) {
+    //
+    // Un 0/0/0 est ecarte : ce n'est pas une mauvaise partie, c'est une partie
+    // non jouee — deconnexion, ou remake que Riot n'a pas marque. Sans la
+    // moindre mort, son KDA de zero coifferait pourtant un vrai 2/14/3. C'est
+    // bien l'absence totale de participation qui disqualifie, pas le KDA nul :
+    // un 0/9/0 reste eligible, c'est meme precisement l'objet du classement.
+    const participation = (row.kills ?? 0) + (row.deaths ?? 0) + (row.assists ?? 0);
+    if (Number.isFinite(row.deaths) && participation > 0) {
       const kda = ((row.kills ?? 0) + (row.assists ?? 0)) / Math.max(1, row.deaths);
       if (!pire || kda < pire.kda || (kda === pire.kda && row.deaths > pire.deaths)) {
         pire = {

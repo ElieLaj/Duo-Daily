@@ -10,6 +10,7 @@ import {
   archiveFinishedGames,
   closeHistory,
   getArchivedDay,
+  getDayTotals,
   getLpDeltas,
   initializeHistory,
   listArchivedDates,
@@ -95,6 +96,51 @@ test('migre le JSON puis archive les parties sans doublon', async () => {
     assert.equal(day.measuredGames, 3);
     assert.equal(day.entry.tier, 'GOLD');
     assert.deepEqual(await listArchivedDates('Joueur#EUW'), ['01-01-1970']);
+  } finally {
+    closeHistory();
+    config.historyPath = originalPath;
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('la pire partie ignore les parties sans la moindre participation', async () => {
+  const originalPath = config.historyPath;
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'bot-elo-pire-'));
+  config.historyPath = path.join(directory, 'history.sqlite');
+
+  const partie = (matchId, kills, deaths, assists, extra = {}) => ({
+    player: { key: 'Joueur#EUW', label: 'Joueur #EUW' },
+    puuid: 'puuid-1',
+    entry: { tier: 'GOLD', rank: 'II', leaguePoints: 42 },
+    ladder: 1342,
+    delta: -18,
+    deltaGames: 1,
+    match: {
+      matchId,
+      endedAt: 1000,
+      championName: 'Gnar',
+      kills,
+      deaths,
+      assists,
+      cs: 120,
+      durationSec: 1800,
+      win: false,
+      remake: false,
+      ...extra,
+    },
+  });
+
+  try {
+    await archiveFinishedGames([
+      // Quinze minutes a 0/0/0 : deconnexion, et Riot ne l'a pas marquee remake.
+      partie('EUW1_absent', 0, 0, 0),
+      partie('EUW1_vraie', 2, 14, 3),
+      partie('EUW1_remake', 0, 0, 0, { remake: true }),
+    ]);
+
+    const totals = await getDayTotals(0, 3000);
+    assert.equal(totals.pirePartie.deaths, 14);
+    assert.equal(totals.games, 2); // le remake ne compte pas, la deconnexion si
   } finally {
     closeHistory();
     config.historyPath = originalPath;
