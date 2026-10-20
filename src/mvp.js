@@ -152,12 +152,19 @@ function note(ratio) {
  * Note du joueur demande, et sa distinction eventuelle.
  *
  * @returns {{score: number, badge: 'MVP'|'ACE'|null}|null} null si le joueur
- *   est introuvable ou si la partie n'a pas deux camps.
+ *   est introuvable, s'il n'a aucune statistique (il n'a pas joue) ou si la
+ *   partie n'a pas deux camps.
  */
 export function mvpFor(participants, puuid) {
   const tous = participants ?? [];
   const moi = tous.find((p) => p.puuid === puuid);
   if (!moi) return null;
+
+  // Aucun kill, aucune mort, aucune assistance : le joueur n'etait pas la.
+  // Le noter reviendrait a lui coller un 2/10 pour une partie qu'il n'a pas
+  // jouee, et a tirer sa moyenne de la semaine vers le bas. Meme traitement
+  // qu'un remake, dont le resultat n'appelle pas de note non plus.
+  if ((moi.kills ?? 0) + (moi.deaths ?? 0) + (moi.assists ?? 0) === 0) return null;
 
   const campDe = (p) => tous.filter((x) => x.teamId === p.teamId);
   const adversairesDe = (p) => tous.filter((x) => x.teamId !== p.teamId);

@@ -202,6 +202,12 @@ test('renvoie le rang dans le camp pour chaque joueur', () => {
 
 test('renvoie null quand il n y a rien a noter', () => {
   assert.equal(mvpFor(PARTIE, 'inconnu'), null);
+  // Zero kill, zero mort, zero assistance : le joueur n'etait pas la.
+  const absent = PARTIE.map((p) =>
+    p.puuid === 'carry' ? { ...p, kills: 0, deaths: 0, assists: 0 } : p,
+  );
+  assert.equal(mvpFor(absent, 'carry'), null);
+  assert.ok(mvpFor(absent, 'mid').score > 0);
   assert.equal(mvpFor([], 'a'), null);
   assert.equal(mvpFor(undefined, 'a'), null);
   // Une seule equipe : aucun vis-a-vis, donc aucune note possible.
