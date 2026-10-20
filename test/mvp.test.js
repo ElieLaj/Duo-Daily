@@ -187,6 +187,19 @@ test('tolere les champs absents et les postes manquants', () => {
   assert.ok(mvpFor(brut, 'a').score > mvpFor(brut, 'b').score);
 });
 
+test('renvoie le rang dans le camp pour chaque joueur', () => {
+  // mid ecrase le feeder, donc MVP et 1er. carry 2e. Les perdants : top-adverse
+  // domine ses coequipiers (ACE), donc 1er dans son camp.
+  assert.equal(notes['mid'].rang, 1);
+  assert.equal(notes['mid'].badge, 'MVP');
+  assert.equal(notes['carry'].rang, 2);
+  assert.equal(notes['top-adverse'].rang, 1);
+  assert.equal(notes['top-adverse'].badge, 'ACE');
+  // Tous les rangs dans les gagnants vont de 1 a 5, sans trou ni doublon.
+  const rangsGagnants = PARTIE.filter((p) => p.win).map((p) => notes[p.puuid].rang).sort((a, b) => a - b);
+  assert.deepEqual(rangsGagnants, [1, 2, 3, 4, 5]);
+});
+
 test('renvoie null quand il n y a rien a noter', () => {
   assert.equal(mvpFor(PARTIE, 'inconnu'), null);
   assert.equal(mvpFor([], 'a'), null);

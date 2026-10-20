@@ -188,8 +188,19 @@ export function mvpFor(participants, puuid) {
   }
   const distingue = camp[meilleur];
 
+  const monIndex = camp.indexOf(moi);
+  const monRatio = ratios[monIndex];
+  const rang =
+    1 +
+    camp.filter((p, i) => {
+      if (ratios[i] > monRatio) return true;
+      if (ratios[i] === monRatio && kda(p) > kda(moi)) return true;
+      return false;
+    }).length;
+
   return {
     score,
     badge: distingue.puuid === moi.puuid ? (moi.win ? 'MVP' : 'ACE') : null,
+    rang,
   };
 }

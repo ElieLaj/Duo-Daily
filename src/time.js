@@ -95,6 +95,32 @@ export function startOfDay(date, timeZone) {
   return fromZoned({ year: p.year, month: p.month, day: p.day, hour: 0, minute: 0 }, timeZone);
 }
 
+/** Numéro du jour de la semaine en heure locale (0 = dim, 1 = lun, …, 3 = mer, …, 6 = sam). */
+export function dayOfWeek(date, timeZone) {
+  const p = partsIn(date, timeZone);
+  return new Date(Date.UTC(p.year, p.month - 1, p.day)).getUTCDay();
+}
+
+/**
+ * Minuit local du mercredi qui a ouvert le cycle de patch en cours.
+ *
+ * Si `date` est un mercredi, recule au mercredi précédent : le mercredi du
+ * jour marque le début d'un nouveau cycle, pas la fin de l'ancien. Les autres
+ * jours renvoient le mercredi de la même semaine ISO.
+ */
+export function patchWeekStart(date, timeZone) {
+  const p = partsIn(date, timeZone);
+  const dow = new Date(Date.UTC(p.year, p.month - 1, p.day)).getUTCDay();
+  const WEDNESDAY = 3;
+  // Au moins 1 jour en arrière : 0 (mercredi) → 7, autres → valeur naturelle.
+  const daysBack = ((dow - WEDNESDAY + 7) % 7) || 7;
+  const target = new Date(Date.UTC(p.year, p.month - 1, p.day - daysBack));
+  return fromZoned(
+    { year: target.getUTCFullYear(), month: target.getUTCMonth() + 1, day: target.getUTCDate(), hour: 0, minute: 0 },
+    timeZone,
+  );
+}
+
 /**
  * Dernier passage prevu de l'horaire quotidien, au plus tard maintenant.
  * Sert au rattrapage : si le PC etait eteint a l'heure du resume, on sait

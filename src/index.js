@@ -20,12 +20,12 @@ import { backfillTodayHistory, pollFinishedGames, primeLiveState } from './live.
 import { loadRankEmojis, rankEmojiCount } from './emojis.js';
 import { defeatImageStatus } from './gifs.js';
 import { initLogger, log } from './logger.js';
-import { buildPlayerDetail, buildReport, commitReport, primeDailySnapshots } from './report.js';
+import { buildPlayerDetail, buildReport, buildWeeklyReport, commitReport, primeDailySnapshots } from './report.js';
 import { loadPromotionRoles, promotionRoleIds } from './roles.js';
 import { APEX_TIERS, ladderPoints, rankLabel } from './rank.js';
 import { buildShopMessage, lastRotation, nextRotation } from './shop.js';
 import { loadStore, updateStore } from './store.js';
-import { formatDateTimeFr, lastScheduledOccurrence } from './time.js';
+import { dayOfWeek, formatDateTimeFr, lastScheduledOccurrence } from './time.js';
 import {
   closeHistory,
   getPeak,
@@ -197,6 +197,32 @@ async function postDailyReport(client, reason) {
   // Apres l'envoi seulement : voir commitReport().
   await commitReport(report);
   log('Résumé publié.');
+}
+
+async function postWeeklyReport(client, reason) {
+  log(`Génération du résumé de la semaine (${reason})…`);
+  await loadRankEmojis(client);
+  const report = await buildWeeklyReport();
+  const channel = await client.channels.fetch(config.channelId).catch(() => null);
+  if (!channel?.isTextBased()) {
+    throw new Error(`Le salon ${config.channelId} est introuvable ou n'accepte pas de messages`);
+  }
+
+  try {
+    for (const message of buildMessages(report)) await channel.send(message);
+  } catch (err) {
+    if (err.code === 50001 || err.code === 50013) {
+      throw new Error(
+        `Permissions insuffisantes sur #${channel.name ?? config.channelId}. ` +
+          `Modifier le salon > Permissions > ajoute le bot et autorise ` +
+          `« Voir le salon », « Envoyer des messages » et « Intégrer des liens ».`,
+      );
+    }
+    throw err;
+  }
+
+  await commitReport(report);
+  log('Résumé de la semaine publié.');
 }
 
 /** Résout l'icône de champion d'une partie, pour un rendu d'encart synchrone. */
@@ -455,9 +481,11 @@ async function main() {
 
       const { hour, minute } = config.dailyTime;
       cron.schedule(`${minute} ${hour} * * *`, () => {
-        postDailyReport(client, 'planifié').catch((err) => log('Échec du résumé planifié :', err.message));
+        // Mercredi soir = jour de patch : résumé de la semaine à la place du quotidien.
+        const fn = dayOfWeek(new Date(), config.timezone) === 3 ? postWeeklyReport : postDailyReport;
+        fn(client, 'planifié').catch((err) => log('Échec du résumé planifié :', err.message));
       }, { timezone: config.timezone });
-      log(`Résumé quotidien programmé à ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')} (${config.timezone})`);
+      log(`Résumé quotidien programmé à ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')} (${config.timezone}) — hebdo les mercredis`);
 
       const roles = await loadPromotionRoles(client);
       if (roles.length) log(`Mention en cas de montée de rang : ${config.promotionRoles.join(', ')}`);
@@ -484,7 +512,10 @@ async function main() {
         const due = lastScheduledOccurrence(new Date(), config.dailyTime, config.timezone);
         const last = store.lastReportAt ? new Date(store.lastReportAt) : null;
         if (!last || last < due) {
-          await postDailyReport(client, last ? 'rattrapage' : 'premier lancement');
+          const reason = last ? 'rattrapage' : 'premier lancement';
+          // Si l'heure manquée tombait un mercredi, on publie le résumé hebdo.
+          const fn = dayOfWeek(due, config.timezone) === 3 ? postWeeklyReport : postDailyReport;
+          await fn(client, reason);
         }
       }
     } catch (err) {
