@@ -455,13 +455,15 @@ export function carriedLine(match) {
   return ((match.kills ?? 0) + (match.assists ?? 0)) / morts < 1;
 }
 
-/** « 🏆 MVP (8.4/10) » ou « 2ème (8.4/10) » selon le classement dans l'équipe. */
+/** « ⭐ 🏆 MVP (8.4/10) » ou « ⭐ 2ème (8.4/10) » selon le classement dans l'équipe. */
 function mvpText({ score, badge, rang }) {
+  // L'étoile ouvre la ligne, comme sur la note moyenne du bilan : la note se
+  // reconnaît au même symbole partout.
   const noteStr = `${score.toFixed(1)}/10`;
-  if (badge === 'MVP') return `🏆 **MVP** *(${noteStr})*`;
-  if (badge === 'ACE') return `💪 **ACE** *(${noteStr})*`;
+  if (badge === 'MVP') return `⭐ 🏆 **MVP** *(${noteStr})*`;
+  if (badge === 'ACE') return `⭐ 💪 **ACE** *(${noteStr})*`;
   const ordinal = rang === 1 ? '1er' : `${rang}ème`;
-  return `**${ordinal}** *(${noteStr})*`;
+  return `⭐ **${ordinal}** *(${noteStr})*`;
 }
 
 export function buildMatchMessage({
