@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { dayOfWeek, parseDateFr, patchWeekStart } from '../src/time.js';
+import { dayOfWeek, formatDateFr, parseDateFr, patchWeekStart, startOfDayPlus, weekStartOf } from '../src/time.js';
 
 test('dayOfWeek renvoie le bon jour en heure locale', () => {
   // 2026-10-19 est un lundi ; 2026-10-21 un mercredi ; 2026-10-25 un dimanche.
@@ -42,4 +42,33 @@ test('convertit une date francaise en jour local, y compris aux changements d he
 
   assert.throws(() => parseDateFr('31-02-2026', 'Europe/Paris'), /inexistante/);
   assert.throws(() => parseDateFr('2026-08-06', 'Europe/Paris'), /JJ-MM-AAAA/);
+});
+
+test('weekStartOf ramene au mercredi de la semaine, le mercredi inclus', () => {
+  const zone = 'Europe/Paris';
+  const debut = (iso) => formatDateFr(new Date(weekStartOf(new Date(iso), zone)), zone);
+
+  // Mercredi 21-10-2026 : il ouvre sa propre semaine, il ne recule pas.
+  assert.equal(debut('2026-10-21T12:00:00+02:00'), '21-10-2026');
+  // Jeudi, puis mardi suivant : meme semaine, meme mercredi.
+  assert.equal(debut('2026-10-22T12:00:00+02:00'), '21-10-2026');
+  assert.equal(debut('2026-10-27T12:00:00+01:00'), '21-10-2026');
+  // Le mercredi suivant bascule sur la semaine d'apres.
+  assert.equal(debut('2026-10-28T12:00:00+01:00'), '28-10-2026');
+});
+
+test('startOfDayPlus compte en jours calendaires, pas en tranches de 24 h', () => {
+  const zone = 'Europe/Paris';
+  const mercredi = weekStartOf(new Date('2026-10-21T12:00:00+02:00'), zone);
+  const fin = startOfDayPlus(new Date(mercredi), 7, zone);
+
+  // Cette semaine contient le passage a l'heure d'hiver du 25 octobre : elle
+  // dure 169 h. Ajouter 7 x 24 h retomberait le 27 a 23:00, soit un jour trop
+  // tot, et le bilan perdrait le dernier mardi.
+  assert.equal(formatDateFr(new Date(fin), zone), '28-10-2026');
+  assert.equal(fin - mercredi, 169 * 60 * 60 * 1000);
+
+  // Une semaine ordinaire fait bien 168 h.
+  const ordinaire = weekStartOf(new Date('2026-11-04T12:00:00+01:00'), zone);
+  assert.equal(startOfDayPlus(new Date(ordinaire), 7, zone) - ordinaire, 168 * 60 * 60 * 1000);
 });
