@@ -3,12 +3,13 @@ import { getAccount, getLeagueEntries, getMatchIds, getMatchResult, getSummoner 
 import { profileIconUrl } from './ddragon.js';
 import { ladderPoints } from './rank.js';
 import { loadStore, updateStore } from './store.js';
-import { formatDateFr, parseDateFr, startOfDay } from './time.js';
+import { formatDateFr, parseDateFr, patchWeekStart, startOfDay } from './time.js';
 import {
   getArchivedDay,
   getDayTotals,
   getLpDeltas,
   getPeak,
+  getRankBefore,
   getRankSamples,
   recordRankSample,
 } from './history.js';
@@ -347,6 +348,98 @@ export async function buildPlayerDetail(input, dateInput = null) {
   const samples = await getRankSamples(player.key, startOfDay(now, config.timezone), now.getTime()).catch(() => []);
 
   return { ...detail, matches: annotateStreaks(matches), truncated, peak, samples };
+}
+
+/**
+ * Collecte le rang live d'un joueur et ses stats SQLite sur la semaine de patch.
+ */
+async function collectWeeklyPlayer(player, store, now, weekStart) {
+  const base = { key: player.key, label: player.label, gameName: player.gameName, tagLine: player.tagLine };
+  try {
+    let puuid = store.players[player.key]?.puuid ?? store.live?.[player.key]?.puuid;
+    if (!puuid) {
+      const account = await getAccount(player.gameName, player.tagLine);
+      if (!account) return { ...base, error: `Compte Riot "${player.label}" introuvable` };
+      puuid = account.puuid;
+    }
+
+    const entries = await getLeagueEntries(puuid);
+    const entry = entries.find((e) => e.queueType === config.queue) ?? null;
+
+    const snapshot = {
+      puuid,
+      takenAt: now.toISOString(),
+      tier: entry?.tier ?? null,
+      rank: entry?.rank ?? null,
+      leaguePoints: entry?.leaguePoints ?? null,
+      wins: entry?.wins ?? null,
+      losses: entry?.losses ?? null,
+      ladder: ladderPoints(entry),
+    };
+
+    await recordRankSample({
+      playerKey: player.key,
+      playerLabel: player.label,
+      entry,
+      ladder: snapshot.ladder,
+      sampledAt: now.getTime(),
+    }).catch((err) => console.warn(`[pic] relevé impossible (${err.message})`));
+
+    // Delta de LP depuis le début de la semaine (rang archivé → rang actuel).
+    const weekStartLadder = await getRankBefore(player.key, weekStart);
+    const delta =
+      Number.isFinite(weekStartLadder) && Number.isFinite(snapshot.ladder)
+        ? snapshot.ladder - weekStartLadder
+        : null;
+
+    // Parties jouées sur la semaine depuis la base archivée.
+    const archived = await getArchivedDay(player.key, weekStart, now.getTime());
+    const games = archivedStats(archived.matches);
+
+    return {
+      ...base,
+      entry,
+      snapshot,
+      delta,
+      games,
+      iconUrl: await fetchIconUrl(puuid),
+      peak: await getPeak(player.key).catch(() => null),
+    };
+  } catch (err) {
+    return { ...base, error: err.message };
+  }
+}
+
+/**
+ * Résumé de la semaine de patch (mercredi à mercredi).
+ *
+ * Remplace le résumé quotidien chaque mercredi soir : les stats couvrent toute
+ * la semaine écoulée depuis le dernier patch, et non la seule journée en cours.
+ */
+export async function buildWeeklyReport() {
+  const now = new Date();
+  const weekStart = patchWeekStart(now, config.timezone);
+  const store = await loadStore();
+
+  const players = [];
+  for (const player of config.players) {
+    players.push(await collectWeeklyPlayer(player, store, now, weekStart));
+  }
+
+  const comparedTo = new Date(weekStart);
+  const dateLabel = `semaine du ${formatDateFr(comparedTo, config.timezone)} au ${formatDateFr(now, config.timezone)}`;
+
+  return finalizeReport(
+    {
+      at: now,
+      dateLabel,
+      comparedTo,
+      weekly: true,
+      players,
+    },
+    weekStart,
+    now.getTime(),
+  );
 }
 
 /**

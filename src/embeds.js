@@ -416,10 +416,13 @@ export function carriedLine(match) {
   return ((match.kills ?? 0) + (match.assists ?? 0)) / morts < 1;
 }
 
-/** « ⭐ 8.4/10 », suivi de la distinction s'il y en a une. */
-function mvpText({ score, badge }) {
-  const distinction = badge === 'MVP' ? ' · 🏆 **MVP**' : badge === 'ACE' ? ' · 💪 **ACE**' : '';
-  return `⭐ **${score.toFixed(1)}**/10${distinction}`;
+/** « 🏆 MVP (8.4/10) » ou « 2ème (8.4/10) » selon le classement dans l'équipe. */
+function mvpText({ score, badge, rang }) {
+  const noteStr = `${score.toFixed(1)}/10`;
+  if (badge === 'MVP') return `🏆 **MVP** *(${noteStr})*`;
+  if (badge === 'ACE') return `💪 **ACE** *(${noteStr})*`;
+  const ordinal = rang === 1 ? '1er' : `${rang}ème`;
+  return `**${ordinal}** *(${noteStr})*`;
 }
 
 export function buildMatchMessage({
@@ -618,7 +621,8 @@ function dureeLongue(seconds) {
  * classement, qui eux ne dépendent pas de l'archivage.
  */
 function summaryEmbed(report) {
-  const embed = new EmbedBuilder().setColor(0x5865f2).setTitle('📊 Bilan de la journée');
+  const titre = report?.weekly ? '📊 Bilan de la semaine' : '📊 Bilan de la journée';
+  const embed = new EmbedBuilder().setColor(0x5865f2).setTitle(titre);
   const fields = [];
 
   // Le maximum est recalculé plutôt que pris en tête de liste : dépendre du
@@ -708,7 +712,10 @@ function summaryEmbed(report) {
 
   if (!fields.length) return null;
   embed.addFields(fields);
-  embed.setFooter({ text: 'Parties et temps comptés sur ce que le bot a observé' });
+  const footerNote = report?.weekly
+    ? 'Parties et temps comptés sur ce que le bot a observé cette semaine'
+    : 'Parties et temps comptés sur ce que le bot a observé';
+  embed.setFooter({ text: footerNote });
   return embed;
 }
 
@@ -778,7 +785,11 @@ export function buildMessages(report, options = {}) {
 
   const embeds = report.players.map((player) =>
     playerEmbed(player, opggUrl(player.gameName, player.tagLine), {
-      gamesLabel: report.historical ? 'Parties de la journée' : 'Nombre de games',
+      gamesLabel: report.weekly
+        ? 'Parties de la semaine'
+        : report.historical
+          ? 'Parties de la journée'
+          : 'Nombre de games',
       deltaNote:
         report.historical && player.measuredGames > 0
           ? `sur ${player.measuredGames} partie${player.measuredGames > 1 ? 's' : ''} mesurée${player.measuredGames > 1 ? 's' : ''}`
@@ -800,7 +811,9 @@ export function buildMessages(report, options = {}) {
   }
   if (!messages.length) messages.push({ embeds: [] });
   // Le titre ne coiffe que le premier message.
-  messages[0].content = `## Résumé du ${report.dateLabel}`;
+  messages[0].content = report.weekly
+    ? `## 📅 Résumé de la ${report.dateLabel}`
+    : `## Résumé du ${report.dateLabel}`;
   return messages;
 }
 

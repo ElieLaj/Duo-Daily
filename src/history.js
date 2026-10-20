@@ -653,6 +653,31 @@ export async function getDayTotals(startMs, endMs) {
   };
 }
 
+/**
+ * Position sur l'échelle juste avant un instant donné, pour calculer un delta
+ * LP sur une période arbitraire (ex. : delta depuis le dernier mercredi).
+ *
+ * Priorité aux parties archivées (ladder_after est précis et directement
+ * observé), repli sur les relevés de trajectoire si aucune partie n'existe.
+ * @returns {number|null} points d'échelle, ou null si aucun relevé trouvé.
+ */
+export async function getRankBefore(playerKey, beforeMs) {
+  const db = await openDatabase();
+  const fromMatch = db.prepare(`
+    SELECT ladder_after AS ladder FROM matches
+    WHERE player_key = ? AND queue_id = ? AND ended_at < ? AND ladder_after IS NOT NULL
+    ORDER BY ended_at DESC LIMIT 1
+  `).get(playerKey, config.queueId, beforeMs);
+  if (fromMatch) return fromMatch.ladder;
+
+  const fromSample = db.prepare(`
+    SELECT ladder FROM rank_samples
+    WHERE player_key = ? AND queue_id = ? AND sampled_at < ? AND source = 'auto'
+    ORDER BY sampled_at DESC LIMIT 1
+  `).get(playerKey, config.queueId, beforeMs);
+  return fromSample?.ladder ?? null;
+}
+
 /** Associe un joueur suivi a un membre Discord. Remplace une liaison existante. */
 export async function setPlayerLink(playerKey, discordId, linkedBy = null) {
   const db = await openDatabase();
