@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { buildMatchMessage, carriedLine } from '../src/embeds.js';
+import { buildMatchMessage, carriedLine, mvpMoyenne } from '../src/embeds.js';
 
 const player = { key: 'Joueur#EUW', label: 'Joueur #EUW', gameName: 'Joueur', tagLine: 'EUW' };
 const partie = (over) => ({
@@ -54,4 +54,33 @@ test('se tait sur une victoire propre', () => {
     entry: null, delta: 18,
   });
   assert.equal(message.content, undefined);
+});
+
+test('moyenne des notes : remakes et parties non notees exclus', () => {
+  const p = (over) => ({ win: true, remake: false, ...over });
+  // La moyenne brute traine le bruit du flottant — 8.4 et 3.2 donnent
+  // 5.800000000000001. L'affichage l'arrondit au dixieme, le test aussi.
+  const arrondi = (r) => (r ? { moyenne: Math.round(r.moyenne * 10) / 10, parties: r.parties } : r);
+
+  // Une partie archivee avant la colonne mvp_score n'a pas de note. La compter
+  // zero tirerait la moyenne vers le bas sans raison.
+  assert.deepEqual(
+    arrondi(mvpMoyenne([p({ mvpScore: 8.4 }), p({ mvpScore: 3.2 }), p({ mvpScore: null })])),
+    { moyenne: 5.8, parties: 2 },
+  );
+
+  // Un remake ne compte pas, meme note.
+  assert.deepEqual(
+    arrondi(mvpMoyenne([p({ mvpScore: 6 }), p({ mvpScore: 9.9, remake: true })])),
+    { moyenne: 6, parties: 1 },
+  );
+
+  // Les parties relevees en direct portent la note sous `mvp`, les archivees
+  // sous `mvpScore` : les deux formes doivent etre acceptees.
+  assert.deepEqual(arrondi(mvpMoyenne([p({ mvp: { score: 7 } }), p({ mvpScore: 5 })])), { moyenne: 6, parties: 2 });
+
+  // Rien a moyenner : null, pour que l'affichage omette la ligne.
+  assert.equal(mvpMoyenne([]), null);
+  assert.equal(mvpMoyenne([p({ mvpScore: null })]), null);
+  assert.equal(mvpMoyenne(undefined), null);
 });
