@@ -822,7 +822,15 @@ export function buildMessages(report, options = {}) {
       : [{ content: `Aucune donnée à résumer pour le ${report.dateLabel}.`, embeds: [] }];
   }
 
-  const embeds = report.players.map((player) =>
+  // Bilan hebdomadaire : les joueurs sans aucune partie ne sont pas affichés.
+  // Sur sept jours, une ligne « 0 partie » n'apprend rien et noie ceux qui ont
+  // joué. Un joueur en erreur reste visible : le masquer ferait passer un échec
+  // de récupération pour une semaine sans jeu.
+  const joueurs = report.weekly
+    ? report.players.filter((player) => player.error || (player.games?.total ?? 0) > 0)
+    : report.players;
+
+  const embeds = joueurs.map((player) =>
     playerEmbed(player, opggUrl(player.gameName, player.tagLine), {
       gamesLabel: report.weekly
         ? 'Parties de la semaine'
