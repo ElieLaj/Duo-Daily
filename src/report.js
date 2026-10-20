@@ -8,6 +8,7 @@ import {
   getArchivedDay,
   getDayTotals,
   getLpDeltas,
+  getMvpAverage,
   getPeak,
   getRankBefore,
   getRankSamples,
@@ -195,6 +196,9 @@ async function finalizeReport(report, startMs, endMs) {
   const debutCourbe = report.comparedTo ? report.comparedTo.getTime() : startMs;
   for (const player of report.players) {
     player.samples = await getRankSamples(player.key, debutCourbe, endMs).catch(() => []);
+    // Passage oblige de tous les bilans — journalier, hebdomadaire, archive —
+    // donc le seul endroit ou brancher la moyenne pour les couvrir tous.
+    player.mvp = await getMvpAverage(player.key, startMs, endMs).catch(() => null);
   }
   return report;
 }

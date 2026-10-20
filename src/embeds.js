@@ -62,6 +62,34 @@ function describeAnsi(lp, delta, rank) {
  * N'est rendue que si le pic dépasse la position actuelle — sinon elle
  * répéterait le rang affiché juste au-dessus.
  */
+/**
+ * Note moyenne, en sous-texte sous la variation de LP.
+ *
+ * Absente tant qu'aucune partie de la periode n'est notee : les parties
+ * archivees avant la colonne mvp_score n'en ont pas, et une ligne vide
+ * vaudrait moins que pas de ligne.
+ */
+function mvpLine(player) {
+  const mvp = player.mvp;
+  if (!mvp?.parties) return '';
+  const partiesTxt = `${mvp.parties} partie${mvp.parties > 1 ? 's' : ''}`;
+  return `
+-# ⭐ Note moyenne : ${mvp.moyenne.toFixed(1)}/10 sur ${partiesTxt}`;
+}
+
+/** Note d'une partie, qu'elle vienne de l'archive ou d'un relevé en direct. */
+function noteDe(match) {
+  const score = Number.isFinite(match.mvpScore) ? match.mvpScore : match.mvp?.score;
+  return Number.isFinite(score) ? score : null;
+}
+
+/** Moyenne des notes d'une liste de parties, remakes exclus. */
+export function mvpMoyenne(matches) {
+  const notes = (matches ?? []).filter((m) => !m.remake).map(noteDe).filter((n) => n !== null);
+  if (!notes.length) return null;
+  return { moyenne: notes.reduce((s, n) => s + n, 0) / notes.length, parties: notes.length };
+}
+
 function peakLine(player) {
   const peak = player.peak;
   if (!peak) return '';
@@ -137,7 +165,7 @@ function playerEmbed(player, url, options = {}) {
     .setDescription(
       config.lpStyle === 'ansi'
         ? describeAnsi(lp, player.delta, rank)
-        : describeClean(lp, player.delta, rank, rankEmoji(player.entry), deltaNote, peakLine(player)),
+        : describeClean(lp, player.delta, rank, rankEmoji(player.entry), deltaNote, peakLine(player) + mvpLine(player)),
     );
 
   // EMBLEM_STYLE=none par defaut : l'embleme de rang alourdit l'encart sans
@@ -293,6 +321,17 @@ export function buildPlayerDetailMessage(detail) {
       value: detail.selectedDate
         ? `*Aucune partie classée archivée le ${detail.dateLabel}.*`
         : '*Aucune partie classée aujourd’hui.*',
+    });
+  }
+
+  // Moyenne des parties listées juste au-dessus, et non de la fenêtre de
+  // comparaison : les deux peuvent différer, et le chiffre doit correspondre à
+  // ce que le lecteur vient de parcourir.
+  const moyenne = mvpMoyenne(detail.matches);
+  if (moyenne) {
+    embed.addFields({
+      name: 'Note moyenne',
+      value: `⭐ **${moyenne.moyenne.toFixed(1)}**/10 *(sur ${moyenne.parties} partie${moyenne.parties > 1 ? 's' : ''} notée${moyenne.parties > 1 ? 's' : ''})*`,
     });
   }
 

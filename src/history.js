@@ -48,6 +48,7 @@ function migrateSchema(db) {
       league_points_after INTEGER,
       ladder_after INTEGER,
       duo_with TEXT,
+      mvp_score REAL,
       source TEXT NOT NULL DEFAULT 'live',
       PRIMARY KEY (player_key, match_id)
     );
@@ -99,6 +100,10 @@ function migrateSchema(db) {
   // virgules. Vide plutot que NULL quand la partie a ete jouee seul, pour
   // distinguer « aucun duo » de « partie archivee avant cette colonne ».
   if (!columns.has('duo_with')) db.exec('ALTER TABLE matches ADD COLUMN duo_with TEXT');
+  // Note de performance. Les parties archivees avant cette colonne restent a
+  // NULL : la note se calcule sur les dix participants, que seule l'API
+  // fournit, et rien ne permet de la reconstituer apres coup.
+  if (!columns.has('mvp_score')) db.exec('ALTER TABLE matches ADD COLUMN mvp_score REAL');
   db.prepare('UPDATE matches SET queue_id = ?, queue_type = ? WHERE queue_id IS NULL').run(
     config.queueId,
     config.queue,
@@ -297,8 +302,8 @@ const UPSERT_MATCH = `
     player_key, player_label, puuid, match_id, queue_id, queue_type, ended_at, observed_at,
     champion_name, kills, deaths, assists, cs, duration_sec, win, remake,
     lp_delta, lp_delta_games, tier_after, rank_after, league_points_after,
-    ladder_after, duo_with, source
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'live')
+    ladder_after, duo_with, mvp_score, source
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'live')
   ON CONFLICT (player_key, match_id) DO UPDATE SET
     player_label = excluded.player_label,
     puuid = COALESCE(excluded.puuid, matches.puuid),
@@ -320,6 +325,7 @@ const UPSERT_MATCH = `
     league_points_after = COALESCE(matches.league_points_after, excluded.league_points_after),
     ladder_after = COALESCE(matches.ladder_after, excluded.ladder_after),
     duo_with = COALESCE(excluded.duo_with, matches.duo_with),
+    mvp_score = COALESCE(excluded.mvp_score, matches.mvp_score),
     source = 'live'
 `;
 
@@ -367,6 +373,7 @@ export async function archiveFinishedGames(records) {
         hasRankSnapshot ? entry?.leaguePoints ?? null : null,
         hasRankSnapshot && Number.isFinite(record.ladder) ? record.ladder : null,
         (match.duo ?? []).map((d) => d.key).join(','),
+        Number.isFinite(match.mvp?.score) ? match.mvp.score : null,
       );
     }
     db.exec('COMMIT');
@@ -409,10 +416,34 @@ function matchFromRow(row) {
     lpDelta: row.lp_delta_games === 1 ? row.lp_delta ?? undefined : undefined,
     // Les libelles sont resolus a l'affichage : seules les cles sont stockees.
     duo: (row.duo_with ?? '').split(',').filter(Boolean).map((key) => ({ key, label: key.replace('#', ' #') })),
+    mvpScore: Number.isFinite(row.mvp_score) ? row.mvp_score : null,
   };
 }
 
 /** Donnees archivees d'un joueur sur un seul jour local. */
+/**
+ * Moyenne des notes de performance sur la periode.
+ *
+ * Les remakes et les parties archivees avant la colonne mvp_score sont
+ * ignores, pas comptes zero : une note absente n'est pas une mauvaise note, et
+ * les compter tirerait la moyenne vers le bas sans raison.
+ *
+ * @returns {{moyenne: number, parties: number}|null} null si aucune partie
+ *   notee sur la periode.
+ */
+export async function getMvpAverage(playerKey, startMs, endMs) {
+  const db = await openDatabase();
+  const row = db.prepare(`
+    SELECT AVG(mvp_score) AS moyenne, COUNT(mvp_score) AS parties
+    FROM matches
+    WHERE player_key = ? AND queue_id = ? AND ended_at >= ? AND ended_at < ?
+      AND mvp_score IS NOT NULL AND (remake IS NULL OR remake = 0)
+  `).get(playerKey, config.queueId, startMs, endMs);
+
+  const parties = Number(row?.parties ?? 0);
+  return parties > 0 ? { moyenne: row.moyenne, parties } : null;
+}
+
 export async function getArchivedDay(playerKey, startMs, endMs) {
   const db = await openDatabase();
   const rows = db.prepare(`
