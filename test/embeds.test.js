@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { buildMatchMessage, carriedLine, mvpMoyenne } from '../src/embeds.js';
+import { buildMatchMessage, buildMessages, carriedLine, mvpMoyenne } from '../src/embeds.js';
 
 const player = { key: 'Joueur#EUW', label: 'Joueur #EUW', gameName: 'Joueur', tagLine: 'EUW' };
 const partie = (over) => ({
@@ -83,4 +83,28 @@ test('moyenne des notes : remakes et parties non notees exclus', () => {
   assert.equal(mvpMoyenne([]), null);
   assert.equal(mvpMoyenne([p({ mvpScore: null })]), null);
   assert.equal(mvpMoyenne(undefined), null);
+});
+
+test('le bilan de la semaine masque les joueurs sans partie', () => {
+  const joueur = (nom, total, over = {}) => ({
+    key: `${nom}#EUW`, label: `${nom} #EUW`, gameName: nom, tagLine: 'EUW',
+    entry: { tier: 'GOLD', rank: 'II', leaguePoints: 40 },
+    delta: 0, games: { total, wins: total, losses: 0 }, samples: [], ...over,
+  });
+  const players = [
+    joueur('Actif', 9),
+    joueur('Absent', 0),
+    joueur('Casse', 0, { error: 'Compte Riot introuvable' }),
+  ];
+  const noms = (report) =>
+    buildMessages(report).flatMap((m) => m.embeds).map((e) => e.data.author?.name).filter(Boolean);
+
+  // Sur la semaine : l'absent disparaît, l'erreur reste — la masquer ferait
+  // passer un échec de récupération pour une semaine sans jeu.
+  assert.deepEqual(noms({ dateLabel: 'semaine du 05-08-2026', weekly: true, players, totals: null }),
+    ['Actif #EUW', 'Casse #EUW']);
+
+  // Le résumé du jour continue d'afficher tout le monde.
+  assert.deepEqual(noms({ dateLabel: '20-10-2026', players, totals: null }),
+    ['Actif #EUW', 'Absent #EUW', 'Casse #EUW']);
 });
