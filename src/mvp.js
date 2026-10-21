@@ -195,13 +195,15 @@ export function mvpFor(participants, puuid) {
   }
   const distingue = camp[meilleur];
 
-  const monIndex = camp.indexOf(moi);
-  const monRatio = ratios[monIndex];
+  // Le rang se joue sur les dix joueurs : un 3ème dans l'équipe peut être 5ème
+  // en global si plusieurs adversaires ont fait une meilleure partie.
+  const tousRatios = tous.map((p) => contribution(p, adversairesDe(p)));
+  const monRatio = tousRatios[tous.indexOf(moi)];
   const rang =
     1 +
-    camp.filter((p, i) => {
-      if (ratios[i] > monRatio) return true;
-      if (ratios[i] === monRatio && kda(p) > kda(moi)) return true;
+    tous.filter((p, i) => {
+      if (tousRatios[i] > monRatio) return true;
+      if (tousRatios[i] === monRatio && kda(p) > kda(moi)) return true;
       return false;
     }).length;
 

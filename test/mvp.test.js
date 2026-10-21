@@ -187,17 +187,17 @@ test('tolere les champs absents et les postes manquants', () => {
   assert.ok(mvpFor(brut, 'a').score > mvpFor(brut, 'b').score);
 });
 
-test('renvoie le rang dans le camp pour chaque joueur', () => {
-  // mid ecrase le feeder, donc MVP et 1er. carry 2e. Les perdants : top-adverse
-  // domine ses coequipiers (ACE), donc 1er dans son camp.
+test('renvoie le rang parmi les dix joueurs', () => {
+  // mid ecrase le feeder : 1er des dix, MVP. carry 2e. top-adverse gagne son
+  // duel contre tank et remonte jusqu'au 5e rang general, tout en etant ACE.
   assert.equal(notes['mid'].rang, 1);
   assert.equal(notes['mid'].badge, 'MVP');
   assert.equal(notes['carry'].rang, 2);
-  assert.equal(notes['top-adverse'].rang, 1);
+  assert.equal(notes['top-adverse'].rang, 5);
   assert.equal(notes['top-adverse'].badge, 'ACE');
-  // Tous les rangs dans les gagnants vont de 1 a 5, sans trou ni doublon.
-  const rangsGagnants = PARTIE.filter((p) => p.win).map((p) => notes[p.puuid].rang).sort((a, b) => a - b);
-  assert.deepEqual(rangsGagnants, [1, 2, 3, 4, 5]);
+  // Le rang est sur dix : les rangs de tous les joueurs couvrent 1 a 10 sans doublon.
+  const tousRangs = PARTIE.map((p) => notes[p.puuid].rang).sort((a, b) => a - b);
+  assert.deepEqual(tousRangs, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
 });
 
 test('renvoie null quand il n y a rien a noter', () => {
