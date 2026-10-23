@@ -466,6 +466,47 @@ function mvpText({ score, badge, rang }) {
   return `⭐ **${ordinal}** *(${noteStr})*`;
 }
 
+/**
+ * Annonce groupée : plusieurs joueurs suivis ont joué ensemble.
+ *
+ * Une seule ligne par joueur — pseudo, champion, KDA, CS, note — sans pastille
+ * victoire/défaite (le résultat est commun à tous, il porte la couleur du titre).
+ * Les joueurs sont triés du meilleur score au moins bon.
+ */
+export function buildGroupMatchMessage({ players, win, links = new Map() }) {
+  const color = win ? COLOR.win : COLOR.loss;
+  const label = win ? '🟢 Victoire de groupe' : '🔴 Défaite de groupe';
+  const duration = durationText(players[0]?.match?.durationSec);
+
+  const embed = new EmbedBuilder()
+    .setColor(color)
+    .setTitle(`${label}${duration ? ` — ${duration}` : ''}`);
+
+  const lines = [...players]
+    .sort((a, b) => {
+      const sa = a.match?.mvp?.score ?? -1;
+      const sb = b.match?.mvp?.score ?? -1;
+      return sb - sa;
+    })
+    .map(({ player, match }) => {
+      if (!match) return null;
+      const nom = nameOf(player.key, player.label, links);
+      const champ = match.championName ?? '?';
+      const kda = kdaText(match);
+      const cs = farmText(match);
+      const note = match.mvp ? mvpText(match.mvp) : null;
+      return [nom, champ, kda, cs, note].filter(Boolean).join(' — ');
+    })
+    .filter(Boolean);
+
+  embed.setDescription(lines.join('\n'));
+
+  const queueLabel = QUEUE_LABEL['RANKED_FLEX_SR'] ?? 'Classée Flexible';
+  embed.setFooter({ text: queueLabel });
+
+  return { embeds: [embed] };
+}
+
 export function buildMatchMessage({
   player,
   match,

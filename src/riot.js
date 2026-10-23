@@ -86,43 +86,54 @@ export function getSummoner(puuid) {
   return request(config.platform + '.api.riotgames.com', p, { allow404: true });
 }
 
-/** IDs des parties de la file suivie depuis `sinceMs`. */
-export async function getMatchIds(puuid, sinceMs, count = 100) {
+/** IDs des parties d'une file depuis `sinceMs`. `queueId` = file principale par défaut. */
+export async function getMatchIds(puuid, sinceMs, count = 100, queueId = config.queueId) {
   const startTime = Math.floor(sinceMs / 1000);
   const p =
     `/lol/match/v5/matches/by-puuid/${encodeURIComponent(puuid)}/ids` +
-    `?startTime=${startTime}&queue=${config.queueId}&count=${Math.min(count, 100)}`;
+    `?startTime=${startTime}&queue=${queueId}&count=${Math.min(count, 100)}`;
   return (await request(config.region + '.api.riotgames.com', p, { allow404: true })) ?? [];
 }
 
-/** Resultat d'une partie pour un joueur donne. null si la partie est introuvable. */
-export async function getMatchResult(matchId, puuid) {
+// Cache TTL 5 min : un même matchId ne passe qu'une fois sur le réseau même si
+// plusieurs joueurs suivis ont joué la même partie dans le même cycle de sondage.
+const MATCH_CACHE_TTL = 5 * 60 * 1000;
+const _matchDataCache = new Map();
+
+/** Données brutes d'une partie, mises en cache. */
+export async function getMatchData(matchId) {
+  const cached = _matchDataCache.get(matchId);
+  if (cached && Date.now() - cached.at < MATCH_CACHE_TTL) return cached.data;
   const p = `/lol/match/v5/matches/${encodeURIComponent(matchId)}`;
-  const match = await request(config.region + '.api.riotgames.com', p, { allow404: true });
-  const me = match?.info?.participants?.find((participant) => participant.puuid === puuid);
+  const data = await request(config.region + '.api.riotgames.com', p, { allow404: true });
+  if (data) _matchDataCache.set(matchId, { data, at: Date.now() });
+  return data;
+}
+
+/** Extrait le résultat d'une partie pour un joueur depuis les données brutes. */
+export function extractMatchResult(match, puuid) {
+  const me = match?.info?.participants?.find((p) => p.puuid === puuid);
   if (!me) return null;
   return {
-    matchId,
+    matchId: match.metadata?.matchId ?? null,
     win: Boolean(me.win),
-    // Une partie abandonnee avant la fin du chargement ne compte pas dans le classement.
     remake: Boolean(me.gameEndedInEarlySurrender),
     endedAt: match.info.gameEndTimestamp ?? match.info.gameStartTimestamp ?? null,
     championName: me.championName ?? null,
     kills: me.kills ?? 0,
     deaths: me.deaths ?? 0,
     assists: me.assists ?? 0,
-    // Le farm total : sbires de couloir + monstres neutres (jungle, crabes).
-    // Riot ne fournit pas de champ agrege, il faut sommer les deux.
     cs: (me.totalMinionsKilled ?? 0) + (me.neutralMinionsKilled ?? 0),
-    // gameDuration est en secondes depuis le patch 11.20.
     durationSec: match.info.gameDuration ?? null,
-    // Note de performance. Rien a payer en requetes : les dix participants
-    // sont deja la. Sans objet sur un remake, ou personne n'a rien fait.
     mvp: me.gameEndedInEarlySurrender ? null : mvpFor(match.info.participants, puuid),
-    // Coequipiers, pour reperer les parties jouees en duo entre joueurs suivis.
-    // Seule la meme equipe compte : se croiser en adversaires n'est pas un duo.
     allies: (match.info.participants ?? [])
       .filter((p) => p.teamId === me.teamId && p.puuid !== puuid)
       .map((p) => p.puuid),
   };
+}
+
+/** Resultat d'une partie pour un joueur donne. null si la partie est introuvable. */
+export async function getMatchResult(matchId, puuid) {
+  const match = await getMatchData(matchId);
+  return extractMatchResult(match, puuid);
 }
