@@ -1,5 +1,5 @@
 import { config } from './config.js';
-import { getAccount, getLeagueEntries, getMatchIds, getMatchResult } from './riot.js';
+import { extractMatchResult, getAccount, getLeagueEntries, getMatchData, getMatchIds, getMatchResult } from './riot.js';
 import { divisionIndex, ladderPoints, rankLabel } from './rank.js';
 import { loadStore, updateStore } from './store.js';
 import { archiveFinishedGames, getPeak, hasHistoryMarker, recordRankSample, setHistoryMarker } from './history.js';
@@ -221,9 +221,82 @@ async function pollPlayer(player, store) {
   };
 }
 
+const FLEX_QUEUE_ID = 440;
+
+/**
+ * Détecte les parties ranked flex jouées en groupe par plusieurs joueurs suivis.
+ *
+ * Seul un getMatchIds léger est émis par joueur par cycle ; le JSON de partie
+ * n'est téléchargé qu'une fois grâce au cache de getMatchData.
+ */
+async function pollFlexGroups(store) {
+  // Si la file principale est déjà flex, le sondage normal couvre tout.
+  if (!config.flexGroup || config.queueId === FLEX_QUEUE_ID) return { groups: [], states: {}, announced: {} };
+
+  // Collecte des IDs de parties flex récentes pour tous les joueurs connus.
+  const byMatchId = new Map(); // matchId → [{player, puuid}]
+  const newCursors = {}; // player.key → nouveau lastFlexMatchId
+
+  for (const player of config.players) {
+    const puuid = store.live?.[player.key]?.puuid ?? store.players?.[player.key]?.puuid;
+    if (!puuid) continue;
+
+    let ids;
+    try {
+      ids = await getMatchIds(puuid, Date.now() - LOOKBACK_MS, 20, FLEX_QUEUE_ID);
+    } catch (err) {
+      console.warn(`[flex] ${player.label} : ${err.message}`);
+      continue;
+    }
+
+    const lastSeen = store.live?.[player.key]?.lastFlexMatchId ?? null;
+    const seenIndex = lastSeen ? ids.indexOf(lastSeen) : -1;
+    const fresh = seenIndex >= 0 ? ids.slice(0, seenIndex) : ids;
+
+    if (ids.length) newCursors[player.key] = ids[0];
+
+    for (const id of fresh) {
+      if (!byMatchId.has(id)) byMatchId.set(id, []);
+      byMatchId.get(id).push({ player, puuid });
+    }
+  }
+
+  const groups = [];
+  const newAnnounced = {};
+
+  for (const [matchId, players] of byMatchId) {
+    if (players.length < 2) continue;
+    // Déjà annoncé lors d'un passage précédent.
+    if (store.flexAnnounced?.[matchId]) continue;
+
+    let matchData;
+    try {
+      matchData = await getMatchData(matchId);
+    } catch (err) {
+      console.warn(`[flex] données de ${matchId} introuvables (${err.message})`);
+      continue;
+    }
+    if (!matchData) continue;
+
+    const members = players
+      .map(({ player, puuid }) => ({ player, match: extractMatchResult(matchData, puuid) }))
+      .filter((m) => m.match !== null);
+
+    if (members.length < 2) continue;
+
+    groups.push({ players: members, win: members[0].match.win });
+    newAnnounced[matchId] = true;
+  }
+
+  return { groups, states: newCursors, announced: newAnnounced };
+}
+
 /**
  * Un passage complet sur tous les joueurs suivis.
  * @returns {Promise<Array>} les parties a annoncer, tous joueurs confondus.
+ *   Chaque élément a un champ `type` : `'solo'` ou `'group'`.
+ *   - `'solo'`  : { type, player, match, entry, … } — announce individuelle
+ *   - `'group'` : { type, players: [{player, match}], win } — announce groupée
  */
 export async function pollFinishedGames() {
   const store = await loadStore();
@@ -246,12 +319,61 @@ export async function pollFinishedGames() {
   // La base est commitee avant le curseur JSON. Une coupure entre les deux
   // rejouera le lot sans creer de doublon grace a la cle joueur/match.
   const inserted = await archiveFinishedGames(records);
-  if (Object.keys(states).length) {
+
+  // Fusionne les mises à jour d'état (file principale + flex).
+  const { groups: flexGroups, states: flexCursors, announced: flexAnnounced } = await pollFlexGroups(store);
+
+  const allStates = { ...states };
+  for (const [key, lastFlexMatchId] of Object.entries(flexCursors)) {
+    allStates[key] = { ...(allStates[key] ?? store.live?.[key] ?? {}), lastFlexMatchId };
+  }
+
+  if (Object.keys(allStates).length || Object.keys(flexAnnounced).length) {
     await updateStore((s) => {
-      s.live = { ...(s.live ?? {}), ...states };
+      s.live = { ...(s.live ?? {}), ...allStates };
+      if (Object.keys(flexAnnounced).length) {
+        s.flexAnnounced = { ...(s.flexAnnounced ?? {}), ...flexAnnounced };
+        // Ménage : on ne conserve pas plus de 200 entrées pour ne pas gonfler le store.
+        const keys = Object.keys(s.flexAnnounced);
+        if (keys.length > 200) {
+          for (const k of keys.slice(0, keys.length - 200)) delete s.flexAnnounced[k];
+        }
+      }
     });
   }
-  return announces.filter(({ player, match }) => inserted.has(`${player.key}\u0000${match.matchId}`));
+
+  // Filtre les annonces individuelles non archivées (doublon ou erreur).
+  const filtered = announces.filter(({ player, match }) => inserted.has(`${player.key}\u0000${match.matchId}`));
+
+  // Regroupe les annonces qui partagent le même matchId (≥2 joueurs ensemble
+  // dans la file principale — en duo sur solo/duo, ou sous-groupe en flex).
+  const byMatchId = new Map();
+  for (const ann of filtered) {
+    const id = ann.match.matchId;
+    if (!byMatchId.has(id)) byMatchId.set(id, []);
+    byMatchId.get(id).push(ann);
+  }
+
+  const groupedMatchIds = new Set();
+  const mainGroups = [];
+
+  for (const [matchId, group] of byMatchId) {
+    if (group.length >= 2) {
+      mainGroups.push({ type: 'group', players: group.map((g) => ({ player: g.player, match: g.match })), win: group[0].match.win });
+      groupedMatchIds.add(matchId);
+    }
+  }
+
+  const soloAnnounces = filtered
+    .filter((ann) => !groupedMatchIds.has(ann.match.matchId))
+    .map((ann) => ({ type: 'solo', ...ann }));
+
+  const groupAnnounces = [
+    ...mainGroups,
+    ...flexGroups.map((g) => ({ type: 'group', ...g })),
+  ];
+
+  return [...soloAnnounces, ...groupAnnounces];
 }
 
 /**

@@ -10,6 +10,7 @@ import { championEmoji } from './champemojis.js';
 import { getChampion } from './champions.js';
 import {
   buildDefeatGifMessage,
+  buildGroupMatchMessage,
   buildMatchMessage,
   buildMessages,
   buildPlayerDetailMessage,
@@ -273,6 +274,14 @@ async function runLiveCheck(client) {
     // effet sans redemarrage.
     const links = await getPlayerLinks().catch(() => new Map());
     for (const announce of announces) {
+      if (announce.type === 'group') {
+        await channel.send(buildGroupMatchMessage({ ...announce, links }));
+        const labels = announce.players.map((p) => p.player.label).join(', ');
+        const issue = announce.win ? 'victoire' : 'défaite';
+        log(`Partie groupée annoncée : [${labels}] — ${issue}`);
+        continue;
+      }
+
       await decorateMatch(client, announce.match);
       await channel.send(buildMatchMessage({ ...announce, links, roleIds: promotionRoleIds() }));
 

@@ -136,6 +136,12 @@ export const config = {
   // plus élevé ne retient que le fait de battre un record un peu ancien.
   peakAnnounceDays: Math.max(0, Number(str('PEAK_ANNOUNCE_DAYS', '0')) || 0),
 
+  // Détection de parties groupées en ranked flex, en complément de la file
+  // principale. N'ajoute que des appels getMatchIds (légers) par cycle ; le JSON
+  // de partie n'est téléchargé qu'une fois par matchId, quelle que soit la taille
+  // du groupe.
+  flexGroup: str('FLEX_GROUP', 'true') !== 'false',
+
   // Rôles mentionnés lors d'une montée de rang : noms ou identifiants séparés
   // par des virgules. Vide = aucune mention.
   promotionRoles: str('PROMOTION_ROLE', 'Goat')
