@@ -189,11 +189,11 @@ test('tolere les champs absents et les postes manquants', () => {
 
 test('renvoie le rang parmi les dix joueurs', () => {
   // mid ecrase le feeder : 1er des dix, MVP. carry 2e. top-adverse gagne son
-  // duel contre tank et remonte jusqu'au 5e rang general, tout en etant ACE.
+  // duel contre tank et remonte jusqu'au 4e rang general, tout en etant ACE.
   assert.equal(notes['mid'].rang, 1);
   assert.equal(notes['mid'].badge, 'MVP');
   assert.equal(notes['carry'].rang, 2);
-  assert.equal(notes['top-adverse'].rang, 5);
+  assert.equal(notes['top-adverse'].rang, 4);
   assert.equal(notes['top-adverse'].badge, 'ACE');
   // Le rang est sur dix : les rangs de tous les joueurs couvrent 1 a 10 sans doublon.
   const tousRangs = PARTIE.map((p) => notes[p.puuid].rang).sort((a, b) => a - b);
@@ -212,4 +212,24 @@ test('renvoie null quand il n y a rien a noter', () => {
   assert.equal(mvpFor(undefined, 'a'), null);
   // Une seule equipe : aucun vis-a-vis, donc aucune note possible.
   assert.equal(mvpFor([PARTIE[0], PARTIE[1]], 'carry'), null);
+});
+
+test('un KDA nettement moins bon ne passe pas devant grace aux degats', () => {
+  // Chiffres reels (EUW1_8027564610). La Seraphine en 2/10/14 passait ACE
+  // devant la Sejuani en 4/6/12 : meme total de kills + assists, des morts qui
+  // ne pesaient que 20 %, et ses degats comme sa vision battaient la Nami d'en
+  // face pendant que la Sejuani affrontait le meilleur joueur de la partie.
+  const partie = [
+    joueur('ekko', 'JUNGLE', true, { k: 14, d: 7, a: 7, dmg: 39013, gold: 13305, vis: 48, ctrl: 2 }),
+    joueur('nami', 'UTILITY', true, { k: 1, d: 6, a: 25, dmg: 11620, gold: 8907, vis: 65, ctrl: 7 }),
+    joueur('sejuani', 'JUNGLE', false, { k: 4, d: 6, a: 12, dmg: 23481, gold: 10481, vis: 23, ctrl: 1 }),
+    joueur('seraphine', 'UTILITY', false, { k: 2, d: 10, a: 14, dmg: 14501, gold: 7871, vis: 71, ctrl: 9 }),
+  ];
+
+  assert.equal(mvpFor(partie, 'sejuani').badge, 'ACE');
+  assert.equal(mvpFor(partie, 'seraphine').badge, null);
+  assert.ok(
+    mvpFor(partie, 'sejuani').score > mvpFor(partie, 'seraphine').score,
+    `sejuani ${mvpFor(partie, 'sejuani').score} vs seraphine ${mvpFor(partie, 'seraphine').score}`,
+  );
 });
