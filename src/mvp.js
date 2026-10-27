@@ -32,7 +32,36 @@
  */
 
 /**
+ * Le duel de KDA peut descendre plus bas que les autres : 1/1,8 au lieu de
+ * 1/1,2.
+ *
+ * La note est volontairement plus severe que genereuse. Ecraser son vis-a-vis
+ * plafonne vite, parce qu'un adversaire faible ne doit pas suffire a faire une
+ * bonne note ; mourir deux fois plus que lui, en revanche, doit pouvoir couter
+ * cher — c'est le signal le plus fiable d'une partie ratee. Au plancher commun
+ * de 1/1,2, un KDA de 1,6 face a 4,3 ne perdait que 17 %, et la partie se
+ * decidait ailleurs.
+ *
+ * Reglage : plateau de 1/1,6 a 1/4 sur les quatre parties de reference, et
+ * echec des 1/1,5. 1/1,8 est pris en debut de plateau, la ou l'ecart se
+ * stabilise sans ecraser le bas du tableau a 0,0.
+ */
+const PLANCHER_KDA = 1.8;
+
+/**
  * Composantes comparees au joueur d'en face.
+ *
+ * Le KDA entre tel quel, et pese la moitie de la note — soit le total des deux
+ * composantes qu'il remplace, « kills + assists » d'un cote et les morts de
+ * l'autre. Les separer rendait des resultats faux : sur une vraie partie, une
+ * Seraphine en 2/10/14 passait ACE devant une Sejuani en 4/6/12, parce que les
+ * deux moities se compensaient (meme total de kills + assists que sa
+ * coequipiere, et des morts qui ne pesaient que 20 %) pendant que les degats
+ * tranchaient. Le rapport kills + assists sur morts est ce que l'oeil lit en
+ * premier sur une ligne de score ; la note doit lire la meme chose.
+ *
+ * Le total des poids doit rester a 1,00, sans quoi une partie egale a celle de
+ * son vis-a-vis ne vaut plus 5,0 — le test miroir le verifie.
  *
  * La vision compte les wards de controle a part : elles coutent de l'or, et
  * c'est ce que visionScore sous-estime le plus chez un bon support.
@@ -44,25 +73,11 @@
  * sur une statistique qui ne dit rien de leur partie.
  */
 const COMPOSANTES = [
-  { poids: 0.3, de: (p) => (p.kills ?? 0) + (p.assists ?? 0) },
+  { poids: 0.5, de: kda, plancher: 1 / PLANCHER_KDA },
   { poids: 0.25, de: (p) => p.totalDamageDealtToChampions ?? 0 },
   { poids: 0.15, de: (p) => (p.visionScore ?? 0) + 2 * (p.detectorWardsPlaced ?? 0) },
   { poids: 0.1, de: (p) => p.goldEarned ?? 0 },
 ];
-
-/**
- * Les morts comptent a l'envers.
- *
- * Calibre sur deux vraies parties comparees au classement OP.GG. Un poids plus
- * eleve rend la note trop sensible a un seul chiffre : a 0,25, un top en
- * 11/4/10 face a un 7/12/6 tirait 36 % de sa note du seul rapport de morts et
- * passait MVP devant un support en 4/9/34. A 0,20, les deux parties designent
- * le bon MVP.
- *
- * Le total des poids doit rester a 1,00, sans quoi une partie egale a celle de
- * son vis-a-vis ne vaut plus 5,0 — le test miroir le verifie.
- */
-const POIDS_MORTS = 0.2;
 
 /**
  * Plafond du rapport de force sur une composante.
@@ -77,6 +92,9 @@ const POIDS_MORTS = 0.2;
  * Le reglage est un plateau : de 1,1 a 1,25 les resultats sont equivalents, et
  * ils se degradent nettement des 1,3. 1,2 est pris au milieu, a l'ecart du
  * decrochage.
+ *
+ * Il ne sert que de plafond : le plancher vaut 1/PLAFOND par defaut, mais une
+ * composante peut en demander un plus bas (voir PLANCHER_KDA).
  */
 const PLAFOND = 1.2;
 
@@ -96,10 +114,10 @@ const EXPOSANT = 14;
  * rapporte, mais pas indefiniment, et une composante ratee ne peut pas a elle
  * seule couler une partie par ailleurs solide.
  */
-function duel(mien, sien) {
+function duel(mien, sien, plancher = 1 / PLAFOND) {
   const lissage = (mien + sien) / 4;
   const rapport = lissage > 0 ? (mien + lissage) / (sien + lissage) : 1;
-  return Math.min(PLAFOND, Math.max(1 / PLAFOND, rapport));
+  return Math.min(PLAFOND, Math.max(plancher, rapport));
 }
 
 /**
@@ -121,18 +139,13 @@ function visAVis(joueur, adversaires) {
 function contribution(joueur, adversaires) {
   const reference = visAVis(joueur, adversaires);
   let ratio = 0;
-
-  for (const { poids, de } of COMPOSANTES) {
-    ratio += poids * duel(de(joueur), reference(de));
+  for (const { poids, de, plancher } of COMPOSANTES) {
+    ratio += poids * duel(de(joueur), reference(de), plancher);
   }
-
-  // Inverse : mourir moins que son vis-a-vis doit payer.
-  ratio += POIDS_MORTS * duel(reference((p) => p.deaths ?? 0), joueur.deaths ?? 0);
-
   return ratio;
 }
 
-/** KDA classique, uniquement pour departager deux ratios identiques. */
+/** KDA classique : premiere composante de la note, et depart des ex aequo. */
 function kda(p) {
   return ((p.kills ?? 0) + (p.assists ?? 0)) / Math.max(1, p.deaths ?? 0);
 }
