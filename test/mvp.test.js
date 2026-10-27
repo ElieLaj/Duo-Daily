@@ -233,3 +233,22 @@ test('un KDA nettement moins bon ne passe pas devant grace aux degats', () => {
     `sejuani ${mvpFor(partie, 'sejuani').score} vs seraphine ${mvpFor(partie, 'seraphine').score}`,
   );
 });
+
+test('distingue deux mauvaises parties au lieu de les coller a zero', () => {
+  // Chiffres reels (EUW1_8027629871). Les deux joueurs ont perdu tous leurs
+  // duels, mais l'Ekko en 12/9/7 a fait bien mieux que l'Ashe en 7/14/8. Au
+  // plancher de 1/1,2 et avec l'ancienne courbe exponentielle, les deux
+  // s'affichaient a 0,1/10.
+  const partie = [
+    joueur('viktor', 'MIDDLE', true, { k: 11, d: 5, a: 15, dmg: 51354, gold: 17351, vis: 37 }),
+    joueur('twitch', 'BOTTOM', true, { k: 26, d: 4, a: 7, dmg: 57645, gold: 25993, vis: 21, ctrl: 1 }),
+    joueur('ekko', 'MIDDLE', false, { k: 12, d: 9, a: 7, dmg: 32786, gold: 17148, vis: 19 }),
+    joueur('ashe', 'BOTTOM', false, { k: 7, d: 14, a: 8, dmg: 23681, gold: 14871, vis: 11 }),
+  ];
+
+  const ekko = mvpFor(partie, 'ekko').score;
+  const ashe = mvpFor(partie, 'ashe').score;
+  assert.ok(ekko - ashe >= 0.5, `ekko ${ekko} vs ashe ${ashe}`);
+  // Et le bas du bareme reste lisible : une partie ratee n'est pas un 0,0 muet.
+  assert.ok(ekko > 1, `ekko ${ekko}`);
+});

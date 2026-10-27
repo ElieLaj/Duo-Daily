@@ -32,21 +32,23 @@
  */
 
 /**
- * Le duel de KDA peut descendre plus bas que les autres : 1/1,8 au lieu de
- * 1/1,2.
+ * Plancher du rapport de force, bien plus bas que le plafond n'est haut.
  *
- * La note est volontairement plus severe que genereuse. Ecraser son vis-a-vis
- * plafonne vite, parce qu'un adversaire faible ne doit pas suffire a faire une
- * bonne note ; mourir deux fois plus que lui, en revanche, doit pouvoir couter
- * cher — c'est le signal le plus fiable d'une partie ratee. Au plancher commun
- * de 1/1,2, un KDA de 1,6 face a 4,3 ne perdait que 17 %, et la partie se
- * decidait ailleurs.
+ * La note est volontairement plus severe que genereuse : ecraser son vis-a-vis
+ * plafonne vite — un adversaire faible ne doit pas suffire a faire une bonne
+ * note — tandis que se faire ecraser doit pouvoir couter cher.
  *
- * Reglage : plateau de 1/1,6 a 1/4 sur les quatre parties de reference, et
- * echec des 1/1,5. 1/1,8 est pris en debut de plateau, la ou l'ecart se
- * stabilise sans ecraser le bas du tableau a 0,0.
+ * A 1/1,2, le plancher effacait les mauvaises parties les unes sur les autres.
+ * Sur EUW1_8027629871, un Ekko en 12/9/7 et une Ashe en 7/14/8 sortaient tous
+ * deux a 0,1/10 : les trois duels perdus de l'Ashe (0,56 / 0,62 / 0,69)
+ * etaient remontes de force a 0,83, soit la meme valeur que ceux de l'Ekko.
+ * Un plancher a 1/2 les separe de plus d'un point.
+ *
+ * Reglage : a partir de 1/2, les cinq parties de reference passent toutes, et
+ * la marge ne bouge plus jusqu'a 1/6. En deca, le classement de deux d'entre
+ * elles se renverse.
  */
-const PLANCHER_KDA = 1.8;
+const PLANCHER = 2;
 
 /**
  * Composantes comparees au joueur d'en face.
@@ -73,7 +75,7 @@ const PLANCHER_KDA = 1.8;
  * sur une statistique qui ne dit rien de leur partie.
  */
 const COMPOSANTES = [
-  { poids: 0.5, de: kda, plancher: 1 / PLANCHER_KDA },
+  { poids: 0.5, de: kda },
   { poids: 0.25, de: (p) => p.totalDamageDealtToChampions ?? 0 },
   { poids: 0.15, de: (p) => (p.visionScore ?? 0) + 2 * (p.detectorWardsPlaced ?? 0) },
   { poids: 0.1, de: (p) => p.goldEarned ?? 0 },
@@ -92,32 +94,21 @@ const COMPOSANTES = [
  * Le reglage est un plateau : de 1,1 a 1,25 les resultats sont equivalents, et
  * ils se degradent nettement des 1,3. 1,2 est pris au milieu, a l'ecart du
  * decrochage.
- *
- * Il ne sert que de plafond : le plancher vaut 1/PLAFOND par defaut, mais une
- * composante peut en demander un plus bas (voir PLANCHER_KDA).
  */
 const PLAFOND = 1.2;
 
 /**
- * Etale le bareme. L'exposant ne change aucun classement — c'est une fonction
- * croissante — il n'agit que sur l'affichage. Il est calibre pour que le
- * plafond ci-dessus corresponde a peu pres a 9/10 : sans lui, une note bornee
- * a 1,2 de rapport ne depasserait jamais 5,5.
- */
-const EXPOSANT = 14;
-
-/**
  * Rapport de force sur une statistique : 1,0 a egalite, borne par PLAFOND.
  *
- * Le lissage, au quart du total des deux, evite la division par zero. Le
- * plafond borne ensuite l'ecart dans les deux sens : ecraser son vis-a-vis
- * rapporte, mais pas indefiniment, et une composante ratee ne peut pas a elle
- * seule couler une partie par ailleurs solide.
+ * Le lissage, au quart du total des deux, evite la division par zero. Les
+ * bornes limitent ensuite l'ecart : ecraser son vis-a-vis rapporte, mais pas
+ * indefiniment, et une seule composante ne peut pas a elle seule couler une
+ * partie par ailleurs solide.
  */
-function duel(mien, sien, plancher = 1 / PLAFOND) {
+function duel(mien, sien) {
   const lissage = (mien + sien) / 4;
   const rapport = lissage > 0 ? (mien + lissage) / (sien + lissage) : 1;
-  return Math.min(PLAFOND, Math.max(plancher, rapport));
+  return Math.min(PLAFOND, Math.max(1 / PLANCHER, rapport));
 }
 
 /**
@@ -139,8 +130,8 @@ function visAVis(joueur, adversaires) {
 function contribution(joueur, adversaires) {
   const reference = visAVis(joueur, adversaires);
   let ratio = 0;
-  for (const { poids, de, plancher } of COMPOSANTES) {
-    ratio += poids * duel(de(joueur), reference(de), plancher);
+  for (const { poids, de } of COMPOSANTES) {
+    ratio += poids * duel(de(joueur), reference(de));
   }
   return ratio;
 }
@@ -151,14 +142,28 @@ function kda(p) {
 }
 
 /**
- * Ratio converti en note sur 10.
+ * Ratio converti en note sur 10, lineairement de part et d'autre de la parite.
  *
- * 10·r/(r+1) vaut 5 pile a egalite et tend vers 10 sans jamais l'atteindre :
- * la note est bornee par construction, sans clamp a ecrire.
+ * Le ratio ne peut pas sortir de [1/PLANCHER ; PLAFOND] — c'est une moyenne
+ * ponderee de duels bornes, de poids total 1,00. Chaque moitie de cet
+ * intervalle est etiree sur une moitie du bareme : 1/PLANCHER vaut 0, la
+ * parite vaut 5 pile, le plafond vaut 10.
+ *
+ * Une courbe en 10·r^n/(r^n+1) a servi d'abord, pour etaler des ratios serres
+ * autour de 1. Elle tassait tout le bas : avec n = 14, tout ce qui passait
+ * sous 0,80 de ratio sortait entre 0,0 et 0,4, et deux parties franchement
+ * differentes s'affichaient a 0,1 toutes les deux. Le bareme ne sert a rien
+ * s'il ne distingue que le haut du tableau.
+ *
+ * La transformation est croissante : elle ne change aucun classement ni aucune
+ * distinction, qui se decident sur le ratio brut.
  */
 function note(ratio) {
-  const r = Math.pow(Math.max(0, ratio), EXPOSANT);
-  return Math.round(((10 * r) / (r + 1)) * 10) / 10;
+  const sur10 =
+    ratio >= 1
+      ? 5 + (5 * (ratio - 1)) / (PLAFOND - 1)
+      : (5 * (ratio - 1 / PLANCHER)) / (1 - 1 / PLANCHER);
+  return Math.round(Math.min(10, Math.max(0, sur10)) * 10) / 10;
 }
 
 /**
