@@ -25,7 +25,11 @@ const ANSI = {
   bold: '[1;37m',
 };
 
-const QUEUE_LABEL = { RANKED_SOLO_5x5: 'Classée Solo/Duo', RANKED_FLEX_SR: 'Classée Flexible' };
+const QUEUE_LABEL = {
+  RANKED_SOLO_5x5: 'Classée Solo/Duo',
+  RANKED_FLEX_SR: 'Classée Flexible',
+  RANKED_PREMADE_5x5: 'Classée 5v5',
+};
 
 /** "+39 LP" / "−27 LP" / "± 0 LP" / "première mesure" */
 function deltaText(delta) {

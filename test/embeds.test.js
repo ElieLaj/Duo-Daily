@@ -127,4 +127,7 @@ test('le pied de page du groupe nomme la file reellement jouee', () => {
 
   const flex = buildGroupMatchMessage({ players: joueurs, win: true, queue: 'RANKED_FLEX_SR' });
   assert.equal(flex.embeds[0].data.footer.text, 'Classée Flexible');
+
+  const premade = buildGroupMatchMessage({ players: joueurs, win: true, queue: 'RANKED_PREMADE_5x5' });
+  assert.equal(premade.embeds[0].data.footer.text, 'Classée 5v5');
 });

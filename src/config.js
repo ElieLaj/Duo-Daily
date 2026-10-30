@@ -12,7 +12,15 @@ dotenv.config({ path: path.join(ROOT, '.env'), quiet: true });
 const QUEUE_IDS = {
   RANKED_SOLO_5x5: 420,
   RANKED_FLEX_SR: 440,
+  // Classée 5v5, échelle à part (RANKED_PREMADE_5x5 cote Riot). Absente de la
+  // queues.json publiée par Riot, mais bien renvoyée par league-v4 et match-v5.
+  RANKED_PREMADE_5x5: 710,
 };
+
+/** Identifiant de file → type tel que nomme par Riot. */
+export const QUEUE_TYPE_BY_ID = Object.fromEntries(
+  Object.entries(QUEUE_IDS).map(([type, id]) => [id, type]),
+);
 
 function str(name, fallback = '') {
   return (process.env[name] ?? '').trim() || fallback;
@@ -136,11 +144,16 @@ export const config = {
   // plus élevé ne retient que le fait de battre un record un peu ancien.
   peakAnnounceDays: Math.max(0, Number(str('PEAK_ANNOUNCE_DAYS', '0')) || 0),
 
-  // Détection de parties groupées en ranked flex, en complément de la file
-  // principale. N'ajoute que des appels getMatchIds (légers) par cycle ; le JSON
-  // de partie n'est téléchargé qu'une fois par matchId, quelle que soit la taille
-  // du groupe.
-  flexGroup: str('FLEX_GROUP', 'true') !== 'false',
+  // Files surveillées en secondaire pour les parties groupées, en plus de la
+  // file principale : 440 = classée flexible, 710 = classée 5v5. Liste vide =
+  // surveillance secondaire désactivée (remplace l'ancien FLEX_GROUP).
+  // N'ajoute que des appels getMatchIds (légers) par file et par cycle ; le JSON
+  // de partie n'est téléchargé qu'une fois par matchId, quelle que soit la
+  // taille du groupe.
+  groupQueues: str('GROUP_QUEUES', '440,710')
+    .split(',')
+    .map((id) => Number(id.trim()))
+    .filter((id) => Number.isInteger(id) && id > 0),
 
   // Rôles mentionnés lors d'une montée de rang : noms ou identifiants séparés
   // par des virgules. Vide = aucune mention.
