@@ -472,8 +472,12 @@ function mvpText({ score, badge, rang }) {
  * Une seule ligne par joueur — pseudo, champion, KDA, CS, note — sans pastille
  * victoire/défaite (le résultat est commun à tous, il porte la couleur du titre).
  * Les joueurs sont triés du meilleur score au moins bon.
+ *
+ * `queue` nomme la file réellement jouée. Le pied de page était figé sur la
+ * classée flexible, alors qu'un duo dans la file principale passe par le même
+ * encart : il s'affichait en « Classée Flexible ».
  */
-export function buildGroupMatchMessage({ players, win, links = new Map() }) {
+export function buildGroupMatchMessage({ players, win, queue = config.queue, links = new Map() }) {
   const color = win ? COLOR.win : COLOR.loss;
   const label = win ? '🟢 Victoire de groupe' : '🔴 Défaite de groupe';
   const duration = durationText(players[0]?.match?.durationSec);
@@ -501,8 +505,7 @@ export function buildGroupMatchMessage({ players, win, links = new Map() }) {
 
   embed.setDescription(lines.join('\n'));
 
-  const queueLabel = QUEUE_LABEL['RANKED_FLEX_SR'] ?? 'Classée Flexible';
-  embed.setFooter({ text: queueLabel });
+  embed.setFooter({ text: QUEUE_LABEL[queue] ?? queue });
 
   return { embeds: [embed] };
 }
