@@ -1,4 +1,4 @@
-import { config } from './config.js';
+import { config, QUEUE_TYPE_BY_ID } from './config.js';
 import { extractMatchResult, getAccount, getLeagueEntries, getMatchData, getMatchIds, getMatchResult } from './riot.js';
 import { divisionIndex, ladderPoints, rankLabel } from './rank.js';
 import { loadStore, updateStore } from './store.js';
@@ -221,43 +221,44 @@ async function pollPlayer(player, store) {
   };
 }
 
-const FLEX_QUEUE_ID = 440;
-
 /**
- * Détecte les parties ranked flex jouées en groupe par plusieurs joueurs suivis.
+ * Détecte les parties jouées en groupe dans les files secondaires : classée
+ * flexible, classée 5v5, et toute file listée dans GROUP_QUEUES.
  *
- * Seul un getMatchIds léger est émis par joueur par cycle ; le JSON de partie
- * n'est téléchargé qu'une fois grâce au cache de getMatchData.
+ * Seul un getMatchIds léger est émis par joueur et par file à chaque cycle ; le
+ * JSON de partie n'est téléchargé qu'une fois grâce au cache de getMatchData.
  */
-async function pollFlexGroups(store) {
-  // Si la file principale est déjà flex, le sondage normal couvre tout.
-  if (!config.flexGroup || config.queueId === FLEX_QUEUE_ID) return { groups: [], states: {}, announced: {} };
+async function pollGroupQueues(store) {
+  // La file principale est déjà couverte par le sondage normal.
+  const files = config.groupQueues.filter((id) => id !== config.queueId);
+  if (!files.length) return { groups: [], states: {}, announced: {} };
 
-  // Collecte des IDs de parties flex récentes pour tous les joueurs connus.
   const byMatchId = new Map(); // matchId → [{player, puuid}]
-  const newCursors = {}; // player.key → nouveau lastFlexMatchId
+  const newCursors = {}; // player.key → { [file]: dernier matchId vu }
 
   for (const player of config.players) {
     const puuid = store.live?.[player.key]?.puuid ?? store.players?.[player.key]?.puuid;
     if (!puuid) continue;
 
-    let ids;
-    try {
-      ids = await getMatchIds(puuid, Date.now() - LOOKBACK_MS, 20, FLEX_QUEUE_ID);
-    } catch (err) {
-      console.warn(`[flex] ${player.label} : ${err.message}`);
-      continue;
-    }
+    for (const file of files) {
+      let ids;
+      try {
+        ids = await getMatchIds(puuid, Date.now() - LOOKBACK_MS, 20, file);
+      } catch (err) {
+        console.warn(`[groupe ${file}] ${player.label} : ${err.message}`);
+        continue;
+      }
 
-    const lastSeen = store.live?.[player.key]?.lastFlexMatchId ?? null;
-    const seenIndex = lastSeen ? ids.indexOf(lastSeen) : -1;
-    const fresh = seenIndex >= 0 ? ids.slice(0, seenIndex) : ids;
+      const lastSeen = store.live?.[player.key]?.lastGroupMatchId?.[file] ?? null;
+      const seenIndex = lastSeen ? ids.indexOf(lastSeen) : -1;
+      const fresh = seenIndex >= 0 ? ids.slice(0, seenIndex) : ids;
 
-    if (ids.length) newCursors[player.key] = ids[0];
+      if (ids.length) newCursors[player.key] = { ...newCursors[player.key], [file]: ids[0] };
 
-    for (const id of fresh) {
-      if (!byMatchId.has(id)) byMatchId.set(id, []);
-      byMatchId.get(id).push({ player, puuid });
+      for (const id of fresh) {
+        if (!byMatchId.has(id)) byMatchId.set(id, []);
+        byMatchId.get(id).push({ player, puuid, file });
+      }
     }
   }
 
@@ -266,14 +267,16 @@ async function pollFlexGroups(store) {
 
   for (const [matchId, players] of byMatchId) {
     if (players.length < 2) continue;
-    // Déjà annoncé lors d'un passage précédent.
+    // Déjà annoncé lors d'un passage précédent. Le nom du champ est historique
+    // — il couvre toutes les files secondaires, pas seulement la flexible —
+    // mais le garder évite de réannoncer les parties déjà vues au déploiement.
     if (store.flexAnnounced?.[matchId]) continue;
 
     let matchData;
     try {
       matchData = await getMatchData(matchId);
     } catch (err) {
-      console.warn(`[flex] données de ${matchId} introuvables (${err.message})`);
+      console.warn(`[groupe] données de ${matchId} introuvables (${err.message})`);
       continue;
     }
     if (!matchData) continue;
@@ -284,7 +287,11 @@ async function pollFlexGroups(store) {
 
     if (members.length < 2) continue;
 
-    groups.push({ players: members, win: members[0].match.win });
+    groups.push({
+      players: members,
+      win: members[0].match.win,
+      queue: QUEUE_TYPE_BY_ID[matchData.info?.queueId ?? players[0].file],
+    });
     newAnnounced[matchId] = true;
   }
 
@@ -320,12 +327,16 @@ export async function pollFinishedGames() {
   // rejouera le lot sans creer de doublon grace a la cle joueur/match.
   const inserted = await archiveFinishedGames(records);
 
-  // Fusionne les mises à jour d'état (file principale + flex).
-  const { groups: flexGroups, states: flexCursors, announced: flexAnnounced } = await pollFlexGroups(store);
+  // Fusionne les mises à jour d'état (file principale + files secondaires).
+  const { groups: flexGroups, states: flexCursors, announced: flexAnnounced } = await pollGroupQueues(store);
 
   const allStates = { ...states };
-  for (const [key, lastFlexMatchId] of Object.entries(flexCursors)) {
-    allStates[key] = { ...(allStates[key] ?? store.live?.[key] ?? {}), lastFlexMatchId };
+  for (const [key, parFile] of Object.entries(flexCursors)) {
+    const base = allStates[key] ?? store.live?.[key] ?? {};
+    allStates[key] = {
+      ...base,
+      lastGroupMatchId: { ...(base.lastGroupMatchId ?? {}), ...parFile },
+    };
   }
 
   if (Object.keys(allStates).length || Object.keys(flexAnnounced).length) {
@@ -375,7 +386,7 @@ export async function pollFinishedGames() {
 
   const groupAnnounces = [
     ...mainGroups,
-    ...flexGroups.map((g) => ({ type: 'group', queue: 'RANKED_FLEX_SR', ...g })),
+    ...flexGroups.map((g) => ({ type: 'group', ...g })),
   ];
 
   return [...soloAnnounces, ...groupAnnounces];
