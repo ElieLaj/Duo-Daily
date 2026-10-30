@@ -359,7 +359,12 @@ export async function pollFinishedGames() {
 
   for (const [matchId, group] of byMatchId) {
     if (group.length >= 2) {
-      mainGroups.push({ type: 'group', players: group.map((g) => ({ player: g.player, match: g.match })), win: group[0].match.win });
+      mainGroups.push({
+        type: 'group',
+        players: group.map((g) => ({ player: g.player, match: g.match })),
+        win: group[0].match.win,
+        queue: config.queue,
+      });
       groupedMatchIds.add(matchId);
     }
   }
@@ -370,7 +375,7 @@ export async function pollFinishedGames() {
 
   const groupAnnounces = [
     ...mainGroups,
-    ...flexGroups.map((g) => ({ type: 'group', ...g })),
+    ...flexGroups.map((g) => ({ type: 'group', queue: 'RANKED_FLEX_SR', ...g })),
   ];
 
   return [...soloAnnounces, ...groupAnnounces];

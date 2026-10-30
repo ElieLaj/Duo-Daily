@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { buildMatchMessage, buildMessages, carriedLine, mvpMoyenne } from '../src/embeds.js';
+import {
+  buildGroupMatchMessage,
+  buildMatchMessage,
+  buildMessages,
+  carriedLine,
+  mvpMoyenne,
+} from '../src/embeds.js';
 
 const player = { key: 'Joueur#EUW', label: 'Joueur #EUW', gameName: 'Joueur', tagLine: 'EUW' };
 const partie = (over) => ({
@@ -107,4 +113,18 @@ test('le bilan de la semaine masque les joueurs sans partie', () => {
   // Le résumé du jour continue d'afficher tout le monde.
   assert.deepEqual(noms({ dateLabel: '20-10-2026', players, totals: null }),
     ['Actif #EUW', 'Absent #EUW', 'Casse #EUW']);
+});
+
+test('le pied de page du groupe nomme la file reellement jouee', () => {
+  const joueurs = [
+    { player: { key: 'A#EUW', label: 'A #EUW' }, match: { championName: 'Ashe', kills: 5, deaths: 2, assists: 7, cs: 200, durationSec: 1800, win: true } },
+    { player: { key: 'B#EUW', label: 'B #EUW' }, match: { championName: 'Nami', kills: 1, deaths: 3, assists: 19, cs: 40, durationSec: 1800, win: true } },
+  ];
+
+  // Un duo dans la file principale passe par le meme encart que la flex.
+  const principale = buildGroupMatchMessage({ players: joueurs, win: true });
+  assert.equal(principale.embeds[0].data.footer.text, 'Classée Solo/Duo');
+
+  const flex = buildGroupMatchMessage({ players: joueurs, win: true, queue: 'RANKED_FLEX_SR' });
+  assert.equal(flex.embeds[0].data.footer.text, 'Classée Flexible');
 });
