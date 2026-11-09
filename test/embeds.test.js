@@ -127,3 +127,26 @@ test('le pied de page du groupe nomme la file reellement jouee', () => {
   const premade = buildGroupMatchMessage({ players: joueurs, win: true, queue: 'RANKED_PREMADE_5x5' });
   assert.equal(premade.embeds[0].data.footer.text, 'Classée 5v5');
 });
+
+test('affiche les dix champions au-dessus de la variation de LP', () => {
+  const emojis = {
+    allies: ['<:ch_Ornn:1>', '<:ch_JarvanIV:2>', '<:ch_Ahri:3>', '<:ch_Ashe:4>', '<:ch_Nami:5>'],
+    adverses: ['<:ch_Mordekaiser:6>', '<:ch_Vi:7>', '<:ch_Viktor:8>', '<:ch_Ezreal:9>', '<:ch_Leona:10>'],
+  };
+  const embed = buildMatchMessage({
+    player,
+    match: partie({ compositionEmojis: emojis }),
+    entry: null,
+    delta: 21,
+  }).embeds[0].data;
+
+  // Ordre des roles conserve, allies a gauche, adversaires a droite.
+  const attendu = `${emojis.allies.join(' ')}  ⚔️  ${emojis.adverses.join(' ')}`;
+  assert.ok(embed.description.includes(attendu), embed.description);
+  // La variation de LP reste en dessous, dans les champs.
+  assert.ok(embed.fields.some((f) => f.name === 'Variation de LP'));
+
+  // Sans emoji disponible, la ligne disparait plutot que de trouer l'alignement.
+  const sansEmojis = buildMatchMessage({ player, match: partie({}), entry: null, delta: 21 });
+  assert.ok(!sansEmojis.embeds[0].data.description.includes('⚔️'));
+});

@@ -110,6 +110,28 @@ export async function getMatchData(matchId) {
   return data;
 }
 
+const ORDRE_ROLES = ['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'UTILITY'];
+
+/**
+ * Champions des deux camps, rangés par rôle : top, jungle, mid, adc, support.
+ *
+ * Sans teamPosition — vieilles parties, files particulières, autofill mal
+ * déclaré — indexOf renvoie -1 pour tout le monde et l'ordre du JSON est
+ * conservé, le tri étant stable. Mieux vaut un ordre arbitraire qu'une ligne
+ * absente : l'information reste lisible.
+ */
+function composition(participants, teamId) {
+  const camp = (memeCamp) => {
+    const place = (p) => ORDRE_ROLES.indexOf(p.teamPosition || p.individualPosition);
+    return participants
+      .filter((p) => (p.teamId === teamId) === memeCamp)
+      .sort((a, b) => place(a) - place(b))
+      .map((p) => p.championName)
+      .filter(Boolean);
+  };
+  return { allies: camp(true), adverses: camp(false) };
+}
+
 /** Extrait le résultat d'une partie pour un joueur depuis les données brutes. */
 export function extractMatchResult(match, puuid) {
   const me = match?.info?.participants?.find((p) => p.puuid === puuid);
@@ -126,6 +148,8 @@ export function extractMatchResult(match, puuid) {
     cs: (me.totalMinionsKilled ?? 0) + (me.neutralMinionsKilled ?? 0),
     durationSec: match.info.gameDuration ?? null,
     mvp: me.gameEndedInEarlySurrender ? null : mvpFor(match.info.participants, puuid),
+    // Les dix champions, pour la ligne de composition de l'annonce.
+    composition: composition(match.info.participants ?? [], me.teamId),
     allies: (match.info.participants ?? [])
       .filter((p) => p.teamId === me.teamId && p.puuid !== puuid)
       .map((p) => p.puuid),
