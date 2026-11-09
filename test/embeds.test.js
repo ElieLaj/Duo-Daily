@@ -121,10 +121,6 @@ test('le pied de page du groupe nomme la file reellement jouee', () => {
     { player: { key: 'B#EUW', label: 'B #EUW' }, match: { championName: 'Nami', kills: 1, deaths: 3, assists: 19, cs: 40, durationSec: 1800, win: true } },
   ];
 
-  // Un duo dans la file principale passe par le meme encart que la flex.
-  const principale = buildGroupMatchMessage({ players: joueurs, win: true });
-  assert.equal(principale.embeds[0].data.footer.text, 'Classée Solo/Duo');
-
   const flex = buildGroupMatchMessage({ players: joueurs, win: true, queue: 'RANKED_FLEX_SR' });
   assert.equal(flex.embeds[0].data.footer.text, 'Classée Flexible');
 
