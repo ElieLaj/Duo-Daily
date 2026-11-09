@@ -514,6 +514,23 @@ export function buildGroupMatchMessage({ players, win, queue = config.queue, lin
   return { embeds: [embed] };
 }
 
+/**
+ * Les dix champions de la partie, alliés à gauche, rangés par rôle.
+ *
+ * Décorative : si les emojis manquent — application sans emoji de champion,
+ * quota atteint — la ligne disparaît au lieu d'afficher un alignement troué.
+ */
+function compositionLine(match) {
+  const emojis = match.compositionEmojis;
+  if (!emojis) return '';
+  const camp = (liste) => (liste ?? []).filter(Boolean).join(' ');
+  const nous = camp(emojis.allies);
+  const eux = camp(emojis.adverses);
+  if (!nous || !eux) return '';
+  return `
+${nous}  ⚔️  ${eux}`;
+}
+
 export function buildMatchMessage({
   player,
   match,
@@ -541,6 +558,7 @@ export function buildMatchMessage({
     .setAuthor({ name: `${player.label} a terminé une partie`, iconURL: player.iconUrl ?? undefined, url })
     .setDescription(
       `## ${icon}${match.champion?.name ?? match.championName} — ${issue}${lpTitre}` +
+        compositionLine(match) +
         duoLine(match, links) +
         recordLine(record),
     );

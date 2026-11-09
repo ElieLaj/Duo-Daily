@@ -250,6 +250,25 @@ async function postWeeklyReport(client, reason) {
 async function decorateMatch(client, match) {
   match.champion = await getChampion(match.championName);
   match.emoji = await championEmoji(client, match.champion);
+  match.compositionEmojis = await compositionEmojis(client, match.composition);
+}
+
+/**
+ * Emojis des dix champions de la partie.
+ *
+ * Sequentiel et non en parallele : au premier passage, chaque emoji manquant
+ * est cree cote Discord, et dix creations simultanees declencheraient autant de
+ * lectures de la liste d'emojis. Les suivantes sont de simples lectures de
+ * cache.
+ */
+async function compositionEmojis(client, composition) {
+  if (!composition) return null;
+  const camp = async (noms) => {
+    const emojis = [];
+    for (const nom of noms) emojis.push(await championEmoji(client, await getChampion(nom)));
+    return emojis;
+  };
+  return { allies: await camp(composition.allies), adverses: await camp(composition.adverses) };
 }
 
 // Un passage lent ne doit pas se superposer au suivant : sans ce verrou, deux
