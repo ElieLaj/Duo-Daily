@@ -356,38 +356,13 @@ export async function pollFinishedGames() {
   // Filtre les annonces individuelles non archivées (doublon ou erreur).
   const filtered = announces.filter(({ player, match }) => inserted.has(`${player.key}\u0000${match.matchId}`));
 
-  // Regroupe les annonces qui partagent le même matchId (≥2 joueurs ensemble
-  // dans la file principale — en duo sur solo/duo, ou sous-groupe en flex).
-  const byMatchId = new Map();
-  for (const ann of filtered) {
-    const id = ann.match.matchId;
-    if (!byMatchId.has(id)) byMatchId.set(id, []);
-    byMatchId.get(id).push(ann);
-  }
-
-  const groupedMatchIds = new Set();
-  const mainGroups = [];
-
-  for (const [matchId, group] of byMatchId) {
-    if (group.length >= 2) {
-      mainGroups.push({
-        type: 'group',
-        players: group.map((g) => ({ player: g.player, match: g.match })),
-        win: group[0].match.win,
-        queue: config.queue,
-      });
-      groupedMatchIds.add(matchId);
-    }
-  }
-
-  const soloAnnounces = filtered
-    .filter((ann) => !groupedMatchIds.has(ann.match.matchId))
-    .map((ann) => ({ type: 'solo', ...ann }));
-
-  const groupAnnounces = [
-    ...mainGroups,
-    ...flexGroups.map((g) => ({ type: 'group', ...g })),
-  ];
+  // La file principale garde une annonce par joueur, même quand deux joueurs
+  // suivis se croisent en duo : seule l'annonce individuelle porte les LP, le
+  // rang, les séries et les GIF, que l'encart groupé ne sait pas montrer. Le
+  // regroupement est réservé aux files secondaires, où il n'y a ni LP suivis ni
+  // série à casser — flex à cinq, classée 5v5.
+  const soloAnnounces = filtered.map((ann) => ({ type: 'solo', ...ann }));
+  const groupAnnounces = flexGroups.map((g) => ({ type: 'group', ...g }));
 
   return [...soloAnnounces, ...groupAnnounces];
 }

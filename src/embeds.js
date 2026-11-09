@@ -477,9 +477,9 @@ function mvpText({ score, badge, rang }) {
  * victoire/défaite (le résultat est commun à tous, il porte la couleur du titre).
  * Les joueurs sont triés du meilleur score au moins bon.
  *
- * `queue` nomme la file réellement jouée. Le pied de page était figé sur la
- * classée flexible, alors qu'un duo dans la file principale passe par le même
- * encart : il s'affichait en « Classée Flexible ».
+ * `queue` nomme la file réellement jouée : l'encart sert à toutes les files
+ * secondaires, pas seulement à la flexible. La file principale n'y passe
+ * jamais — un duo en solo/duo garde ses annonces individuelles.
  */
 export function buildGroupMatchMessage({ players, win, queue = config.queue, links = new Map() }) {
   const color = win ? COLOR.win : COLOR.loss;
